@@ -189,7 +189,7 @@ def call_model(system, messages, task_id, **options):
     return ledger_call(request, task_id, key)
 
 
-def run(task_id):
+def run(task_id, group=False):
     from .conversations import conversation, add_message
     try:
         with SessionLocal() as db:
@@ -221,6 +221,8 @@ def run(task_id):
                     db.commit()
                     return
             content = generate(messages, task_id)
+            if group and isinstance(content, TransferReply):
+                content = '这个问题需要单独核实，请私聊机器人处理订单或售后；不要在群里发送订单、手机号和地址。'
         status = 'complete'
     except LimitError:
         status, content = 'limited', None
@@ -260,8 +262,10 @@ def run(task_id):
 
 
 def recover():
+    from .models import QQBinding
     with SessionLocal() as db:
-        ids = list(db.scalars(select(AiReply.id).where(AiReply.status.in_(ACTIVE))))
+        ids = list(db.scalars(select(AiReply.id).where(AiReply.status.in_(ACTIVE),
+            ~select(QQBinding.id).where(QQBinding.conversation_id == AiReply.conversation_id).exists())))
     from .conversations import conversation
     for task_id in ids:
         with SessionLocal() as db:

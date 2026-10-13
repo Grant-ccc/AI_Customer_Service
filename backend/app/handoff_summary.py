@@ -147,9 +147,12 @@ def run_summary(handoff_id):
 
 def recover_summaries():
     from .conversations import conversation
+    from .models import QQBinding
     with SessionLocal() as db:
-        ids = list(db.scalars(select(HandoffSummary.handoff_id).where(
-            HandoffSummary.status.in_(('queued', 'generating')))))
+        ids = list(db.scalars(select(HandoffSummary.handoff_id).join(Handoff,
+            Handoff.id == HandoffSummary.handoff_id).where(
+            HandoffSummary.status.in_(('queued', 'generating')),
+            ~select(QQBinding.id).where(QQBinding.conversation_id == Handoff.conversation_id).exists())))
     for handoff_id in ids:
         with SessionLocal() as db:
             h = db.get(Handoff, handoff_id)

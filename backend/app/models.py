@@ -92,3 +92,23 @@ class MerchantSession(Base):
     username: Mapped[str] = mapped_column(ForeignKey('merchant_accounts.username'))
     csrf_hash: Mapped[str] = mapped_column(String(64))
     expires_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class QQBinding(Base):
+    __tablename__ = 'qq_bindings'
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    conversation_id: Mapped[str] = mapped_column(ForeignKey('conversations.id'), unique=True)
+    kind: Mapped[str] = mapped_column(String(8))
+    target: Mapped[str] = mapped_column(String(128))
+    reply_id: Mapped[str] = mapped_column(String(256))
+    received_at: Mapped[datetime] = mapped_column(DateTime)
+
+
+class QQDelivery(Base):
+    __tablename__ = 'qq_deliveries'
+    message_id: Mapped[str] = mapped_column(ForeignKey('messages.id'), primary_key=True)
+    binding_id: Mapped[str] = mapped_column(ForeignKey('qq_bindings.id'), index=True)
+    reply_id: Mapped[str] = mapped_column(String(256))
+    reply_seq: Mapped[int] = mapped_column(Integer)
+    deadline: Mapped[datetime] = mapped_column(DateTime)
+    status: Mapped[str] = mapped_column(String(24), default='pending', index=True)

@@ -59,6 +59,8 @@ def add_message(db, c, role, content, client_id=None):
                       content=content, client_message_id=client_id)
     db.add(message)
     db.flush()
+    from .qq_bridge import enqueue_delivery
+    enqueue_delivery(db, c, message)
     return message
 
 
@@ -87,6 +89,14 @@ def snapshot(db, c, merchant=False):
               'messages': [message_data(m) for m in db.scalars(select(Message).where(Message.conversation_id == c.id).order_by(Message.sequence))]}
     result['ai'] = public_status(db, c)
     if merchant:
+        from .models import QQBinding, QQDelivery
+        binding = db.scalar(select(QQBinding).where(QQBinding.conversation_id == c.id))
+        result['channel'] = 'qq' if binding else 'web'
+        if binding:
+            deliveries = {row.message_id: row.status for row in db.scalars(
+                select(QQDelivery).where(QQDelivery.binding_id == binding.id))}
+            for message in result['messages']:
+                message['qq_delivery'] = deliveries.get(message['id'])
         from .handoff_summary import summary_data
         h = latest_handoff(db, c)
         result['handoff'] = None if not h else {
@@ -177,6 +187,9 @@ def merchant_list(request: Request, db: Session = Depends(get_db)):
         row = {'id': c.id, 'status': c.status, 'preview': last.content[:60] if last else '尚未描述问题',
                'unread': not h.viewed or c.latest_user_sequence > h.read_sequence,
                'updated_at': c.updated_at.isoformat() + 'Z'}
+        from .models import QQBinding
+        row['channel'] = 'qq' if db.scalar(select(QQBinding.id).where(
+            QQBinding.conversation_id == c.id)) else 'web'
         (ended if h.ended_at else pending).append(row)
     return {'pending': pending, 'ended': ended}
 
