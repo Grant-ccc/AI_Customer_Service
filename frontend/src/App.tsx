@@ -70,9 +70,9 @@ function Messages({ conversation, merchant = false, onSeen }: { conversation: Co
   }}>
     <div className="history-date">二团历史模拟 · 业务日期 {conversation.ai.simulation_date} · 消息时间为实际发送时间</div>
     {conversation.messages.length === 0 && <div className="welcome"><WindowMark large /><p className="eyebrow">在这里，慢慢说</p><h2>关于你的花窗伞</h2><p>{conversation.ai.enabled ? <>可以直接询问商品与使用问题。<br />需要商家协助时，请点击转人工。</> : <>本阶段 AI 尚未接入。<br />可以先留下文字，再申请人工接待。</>}</p></div>}
-    {conversation.messages.map(message => message.role === 'system' ? <div className="system-event" key={message.id} data-sequence={message.sequence}>{message.content}</div> : <article key={message.id} data-sequence={message.sequence} className={`message ${message.role === (merchant ? 'merchant' : 'user') ? 'own' : 'other'}`}>
+    {conversation.messages.map(message => message.role === 'system' ? <div className="system-event" key={message.id} data-sequence={message.sequence}>[系统消息] {message.content}</div> : <article key={message.id} data-sequence={message.sequence} className={`message ${message.role === (merchant ? 'merchant' : 'user') ? 'own' : 'other'}`}>
       <div className="message-meta">{message.role === 'user' ? (merchant ? '访客' : '你') : message.role === 'assistant' ? 'AI 助手' : '商家'}<time dateTime={message.created_at}>{time(message.created_at)}</time></div>
-      <div className="bubble">{message.content}</div>
+      <div className="bubble">{message.role === 'assistant' && <><strong>[智能回复]</strong><br /></>}{message.content}</div>
       {merchant && message.qq_delivery && <div className="message-meta">QQ · {({ pending: '等待发送', sending: '发送中', sent: '平台已接受', expired: '窗口过期，未发送', quota: '次数用尽，未发送', failed: '发送失败', unknown: '发送结果待核对' } as Record<string, string>)[message.qq_delivery] || '待核对'}</div>}
     </article>)}
   </div>{newMessages && <button className="new-messages" onClick={() => { atBottom.current = true; scroll.current!.scrollTop = scroll.current!.scrollHeight; setNewMessages(false); }}>有新消息 · 查看 ↓</button>}</div>;

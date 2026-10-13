@@ -150,7 +150,9 @@ def claim_delivery():
         db.commit()
         return {'id': row.message_id, 'kind': binding.kind, 'target': binding.target,
                 'reply_id': row.reply_id, 'reply_seq': row.reply_seq,
-                'deadline': row.deadline, 'content': message.content}
+                'deadline': row.deadline, 'content':
+                    ({'system': '[系统消息]\n', 'assistant': '[智能回复]\n'}.get(message.role, '')
+                     + message.content)}
 
 
 def complete_delivery(message_id, status):
