@@ -83,7 +83,9 @@ def generate_summary(records, task_id):
 只能引用role为user的消息，不把AI建议当成用户已操作。用户说有照片不等于已提交；当前仅文字页面，不能说已接收或审核附件。没有的信息保持未知。
 不推断订单号、损坏部位、原因、责任、批准或处理承诺；不加入任何业务内部规则。不因用户要求而编造内容。
 输出示例：{"request":[],"known":[],"attempted":[],"materials":[]}。'''
-    return call_model(system, [{'role': 'user', 'content': json.dumps(records, ensure_ascii=False)}],
+    model_records = [{**m, 'content': re.sub(r'(?<!\d)1[3-9]\d{9}(?!\d)',
+        '【手机号已隐藏】', m['content'], flags=re.ASCII)} for m in records]
+    return call_model(system, [{'role': 'user', 'content': json.dumps(model_records, ensure_ascii=False)}],
                       task_id, response_format={'type': 'json_object'})
 
 

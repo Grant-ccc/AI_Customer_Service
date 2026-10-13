@@ -124,7 +124,8 @@ def round_messages(db, c):
     # Fail explicitly instead of silently dropping early conditions from the round.
     if len(messages) > 80:
         raise LimitError('Round too long')
-    return [{'role': m.role, 'content': m.content} for m in messages]
+    return [{'role': m.role, 'content': re.sub(r'(?<!\d)1[3-9]\d{9}(?!\d)',
+        '【手机号已隐藏】', m.content, flags=re.ASCII)} for m in messages]
 
 
 def ledger_call(request, task_id, key):

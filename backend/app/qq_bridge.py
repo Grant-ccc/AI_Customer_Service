@@ -100,9 +100,16 @@ def ingest(app_id, event, data):
                                  '已申请人工接待，可以继续补充文字。')
                 summary_id = h.id
             else:
-                task_id = enqueue(db, c)
-                if not task_id and c.status == 'ai_ready':
-                    add_message(db, c, 'system', 'AI暂不可用，请私聊发送“转人工”联系商家。')
+                from .shipments import lookup_reply
+                answer = lookup_reply(db, content, group=group) if c.status == 'ai_ready' else None
+                if answer:
+                    from .simple_ai import invalidate
+                    invalidate(db, c)
+                    add_message(db, c, 'assistant', answer)
+                else:
+                    task_id = enqueue(db, c)
+                    if not task_id and c.status == 'ai_ready':
+                        add_message(db, c, 'system', 'AI暂不可用，请私聊发送“转人工”联系商家。')
             db.commit()
             return task_id, summary_id, group
     except IntegrityError:

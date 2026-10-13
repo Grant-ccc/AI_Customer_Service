@@ -149,7 +149,14 @@ def visitor_send(data: Send, request: Request, background_tasks: BackgroundTasks
                              '已申请人工接待，可以在这里继续补充文字。')
             summary_id = h.id
         else:
-            task_id = enqueue(db, c)
+            from .shipments import lookup_reply
+            answer = lookup_reply(db, data.content) if c.status == 'ai_ready' else None
+            if answer:
+                from .simple_ai import invalidate
+                invalidate(db, c)
+                add_message(db, c, 'assistant', answer)
+            else:
+                task_id = enqueue(db, c)
     db.commit()
     if task_id:
         background_tasks.add_task(run, task_id)

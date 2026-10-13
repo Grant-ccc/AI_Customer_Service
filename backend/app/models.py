@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 import uuid
 from sqlalchemy import String, Text, DateTime, Integer, Boolean, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.dialects.mysql import MEDIUMTEXT
 from .db import Base
 
 
@@ -112,3 +113,19 @@ class QQDelivery(Base):
     reply_seq: Mapped[int] = mapped_column(Integer)
     deadline: Mapped[datetime] = mapped_column(DateTime)
     status: Mapped[str] = mapped_column(String(24), default='pending', index=True)
+
+
+class Shipment(Base):
+    __tablename__ = 'shipments'
+    tracking_number: Mapped[str] = mapped_column(String(64), primary_key=True)
+    phone: Mapped[str] = mapped_column(String(11), index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+
+
+class ShipmentImport(Base):
+    __tablename__ = 'shipment_imports'
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    username: Mapped[str] = mapped_column(ForeignKey('merchant_accounts.username'))
+    payload: Mapped[str] = mapped_column(Text().with_variant(MEDIUMTEXT(), 'mysql'))
+    expires_at: Mapped[datetime] = mapped_column(DateTime)
+    committed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
