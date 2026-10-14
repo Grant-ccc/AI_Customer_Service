@@ -25,7 +25,7 @@ function Contact({ row, open }: { row: Row; open: (id: string) => void }) {
     <span className={`contact-avatar ${row.channel === 'qq' ? 'qq' : ''}`} aria-hidden="true">{row.channel === 'qq' ? 'Q' : '访'}</span>
     <span className="contact-copy"><span className="contact-top"><strong>{contactName(row)}</strong><time dateTime={row.updated_at}>{time(row.updated_at)}</time></span>
       <span className="contact-preview">{row.preview || '暂无文字消息'}</span>
-      <span className="contact-bottom"><span className={`contact-status ${row.status}`}>{statusLabel[row.status]}</span><span className="channel-label">{row.channel === 'qq' ? 'QQ' : '网页'}</span></span>
+      <span className="contact-bottom"><span className={`contact-status ${row.status}`}>{row.status === 'waiting_human' ? '待接手' : row.status === 'human_active' ? '接待中' : statusLabel[row.status]}</span><span className="channel-label">{row.channel === 'qq' ? 'QQ' : '网页'}</span></span>
     </span>{row.unread && <span className="mobile-unread" aria-label="未读消息" />}
   </button>;
 }
@@ -34,14 +34,15 @@ export default function MobileWorkspace({ queue, csrf, error, syncedAt, page, se
   queue: Queue; csrf: string; error: string; syncedAt: string; page: Page; setPage: (page: Page) => void;
   chatOpen: boolean; open: (id: string) => void; back: () => void; chat: ReactNode; handoff: ReactNode; endAction: ReactNode; logout: () => void; busy: boolean;
 }) {
-  const [filter, setFilter] = useState<'all' | 'unread' | 'pending' | 'ended'>('all');
+  const [filter, setFilter] = useState<'all' | 'unread' | 'waiting' | 'active' | 'ended'>('all');
   const [search, setSearch] = useState('');
   const sheet = useRef<HTMLDialogElement>(null);
   useEffect(() => { if (!chatOpen) sheet.current?.close(); }, [chatOpen]);
   const all = [...queue.pending, ...queue.ended].sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
   const waiting = queue.pending.filter(row => row.status === 'waiting_human');
+  const active = queue.pending.filter(row => row.status === 'human_active');
   const unread = all.filter(row => row.unread);
-  const rows = (filter === 'pending' ? queue.pending : filter === 'ended' ? queue.ended : filter === 'unread' ? unread : all)
+  const rows = (filter === 'waiting' ? waiting : filter === 'active' ? active : filter === 'ended' ? queue.ended : filter === 'unread' ? unread : all)
     .filter(row => `${contactName(row)} ${row.preview}`.toLowerCase().includes(search.trim().toLowerCase()));
   function inbox(nextFilter: typeof filter) { setFilter(nextFilter); setSearch(''); setPage('messages'); }
   return <div className={`mobile-app ${chatOpen ? 'chat-open' : ''}`}>
@@ -54,13 +55,13 @@ export default function MobileWorkspace({ queue, csrf, error, syncedAt, page, se
       {error && <div className="notice" role="alert">{error}</div>}
       {page === 'messages' && <>
         <label className="mobile-search"><MobileIcon name="search" /><input aria-label="搜索会话" placeholder="搜索会话或消息" value={search} onChange={e => setSearch(e.target.value)} /><span>{search && <button aria-label="清空搜索" onClick={() => setSearch('')}>×</button>}</span></label>
-        <div className="mobile-filters" aria-label="会话筛选">{(['all', 'unread', 'pending', 'ended'] as const).map(value => <button key={value} aria-pressed={filter === value} onClick={() => setFilter(value)}>{({ all: '全部', unread: '未读', pending: '待处理', ended: '已结束' })[value]}</button>)}</div>
+        <div className="mobile-filters" aria-label="会话筛选">{(['all', 'unread', 'waiting', 'active', 'ended'] as const).map(value => <button key={value} aria-pressed={filter === value} onClick={() => setFilter(value)}>{({ all: '全部', unread: '未读', waiting: '待接手', active: '接待中', ended: '已结束' })[value]}</button>)}</div>
         <main className="mobile-inbox">{rows.map(row => <Contact key={row.id} row={row} open={open} />)}{!rows.length && <div className="mobile-empty"><MobileIcon name="message" /><h2>{search ? '没有找到相关会话' : !syncedAt && !error ? '正在同步会话…' : '这里暂时没有会话'}</h2><p>{search ? '试试会话编号或消息中的关键词。' : '客户转人工后，会出现在这里。'}</p></div>}</main>
       </>}
       {page === 'work' && <main className="mobile-work">
         <div className="mobile-service-card"><span className="service-emblem">Q</span><div><strong>QQ 与网页接待</strong><p>在这里接手、回复和结束会话</p></div></div>
-        <div className="mobile-stats"><button onClick={() => inbox('pending')}><span className="stat-icon"><MobileIcon name="clock" /></span><span>待处理<strong>{queue.pending.length}</strong></span><MobileIcon name="arrow" /></button><button onClick={() => inbox('unread')}><span className="stat-icon wine"><MobileIcon name="message" /></span><span>未读会话<strong>{unread.length}</strong></span><MobileIcon name="arrow" /></button></div>
-        <div className="mobile-section-heading"><h2>需要你处理</h2><span>{waiting.length} 个等待接手</span></div>
+        <div className="mobile-stats"><button onClick={() => inbox('waiting')}><span className="stat-icon"><MobileIcon name="clock" /></span><span>待接手<strong>{waiting.length}</strong></span><MobileIcon name="arrow" /></button><button onClick={() => inbox('active')}><span className="stat-icon wine"><MobileIcon name="message" /></span><span>接待中<strong>{active.length}</strong></span><MobileIcon name="arrow" /></button></div>
+        <div className="mobile-section-heading"><h2>需要你处理</h2><span>{waiting.length} 待接手 · {active.length} 接待中</span></div>
         <div className="mobile-task-list">{queue.pending.slice().sort((a, b) => Number(b.status === 'waiting_human') - Number(a.status === 'waiting_human') || Date.parse(b.updated_at) - Date.parse(a.updated_at)).slice(0, 5).map(row => <Contact key={row.id} row={row} open={open} />)}{!queue.pending.length && <p className="mobile-card-empty">暂时没有待处理事项</p>}</div>
         <div className="mobile-section-heading"><h2>快捷操作</h2></div><div className="mobile-shortcuts"><ShipmentImport csrf={csrf} /><button className="secondary" onClick={() => inbox('ended')}><MobileIcon name="file" />已结束会话</button></div>
       </main>}

@@ -14,7 +14,7 @@ def run():
         context = browser.new_context(viewport={'width': 390, 'height': 844}, is_mobile=True, device_scale_factor=1)
         page = context.new_page()
         errors, writes = [], []
-        state = {'status': 'waiting_human', 'fail_send': False, 'fail_end': False, 'fail_queue': False, 'logged_in': True}
+        state = {'status': 'waiting_human', 'extra_rows': False, 'fail_send': False, 'fail_end': False, 'fail_queue': False, 'logged_in': True}
         messages = [{'id': 'm1', 'sequence': 1, 'role': 'user', 'content': '这款可以定制图案吗？', 'created_at': NOW}]
         def detail():
             return {'id': 'qq-demo-001', 'channel': 'qq', 'status': state['status'], 'revision': len(messages) + (state['status'] != 'waiting_human'), 'sequence': len(messages), 'messages': messages, 'ai': {'enabled': False, 'status': 'idle', 'simulation_date': '2025-02-01'}, 'handoff': {'id': 'handoff-1', 'round': 1, 'reason': '客户申请人工。' * 80, 'covered_sequence': 1, 'created_at': NOW, 'ended_at': NOW if state['status'] == 'ended' else None, 'summary_status': 'pending', 'summary': None, 'summary_start_sequence': None, 'summary_covered_sequence': None}}
@@ -26,6 +26,10 @@ def run():
             elif path == '/merchant/conversations':
                 row = {'id': 'qq-demo-001', 'channel': 'qq', 'status': state['status'], 'preview': messages[-1]['content'], 'unread': True, 'updated_at': NOW}
                 payload = {'pending': [] if state['status'] == 'ended' else [row], 'ended': [row] if state['status'] == 'ended' else []}
+                if state['extra_rows']:
+                    for extra_id, extra_status in [('waiting-demo', 'waiting_human'), ('active-demo', 'human_active'), ('ended-demo', 'ended')]:
+                        extra = dict(row, id=extra_id, status=extra_status, unread=False, preview=extra_id)
+                        payload['ended' if extra_status == 'ended' else 'pending'].append(extra)
                 if state['fail_queue']:
                     status, payload = 503, {'detail': '会话同步暂时中断'}
             elif path.endswith('/takeover'):
@@ -65,6 +69,33 @@ def run():
         nav = page.get_by_role('navigation', name='主导航')
         expect(page.locator('.mobile-contact')).to_have_count(1)
         page.screenshot(path=str(OUT / 'messages.png'))
+        state['extra_rows'] = True
+        expect(page.locator('.mobile-contact')).to_have_count(4, timeout=10000)
+        page.get_by_role('button', name='待接手', exact=True).click()
+        expect(page.locator('.mobile-contact')).to_have_count(2)
+        expect(page.locator('.contact-status').first).to_have_text('待接手')
+        page.get_by_role('button', name='接待中', exact=True).click()
+        expect(page.locator('.mobile-contact')).to_have_count(1)
+        expect(page.locator('.mobile-contact')).to_contain_text('active-demo')
+        page.get_by_role('button', name='已结束', exact=True).click()
+        expect(page.locator('.mobile-contact')).to_have_count(1)
+        expect(page.locator('.mobile-contact')).to_contain_text('ended-demo')
+        nav.get_by_role('button', name='工作台', exact=True).click()
+        expect(page.locator('.mobile-stats button').first).to_contain_text('待接手2')
+        expect(page.locator('.mobile-stats button').nth(1)).to_contain_text('接待中1')
+        expect(page.locator('.mobile-task-list .mobile-contact').first.locator('.contact-status')).to_have_text('待接手')
+        page.screenshot(path=str(OUT / 'work-mixed.png'))
+        page.locator('.mobile-stats button').nth(1).click()
+        expect(page.get_by_role('button', name='接待中', exact=True)).to_have_attribute('aria-pressed', 'true')
+        expect(page.locator('.mobile-contact')).to_have_count(1)
+        page.get_by_label('搜索会话').fill('waiting-demo')
+        expect(page.get_by_text('没有找到相关会话')).to_be_visible()
+        page.get_by_role('button', name='待接手', exact=True).click()
+        expect(page.locator('.mobile-contact')).to_have_count(1)
+        page.get_by_label('清空搜索').click()
+        page.get_by_role('button', name='全部', exact=True).click()
+        state['extra_rows'] = False
+        expect(page.locator('.mobile-contact')).to_have_count(1, timeout=10000)
         state['fail_queue'] = True
         expect(page.get_by_text('同步中断', exact=True)).to_be_visible(timeout=10000)
         expect(page.locator('.mobile-contact')).to_have_count(1)
