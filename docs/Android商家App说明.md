@@ -37,3 +37,7 @@ APK位于 `mobile/android/app/build/outputs/apk/debug/app-debug.apk`。SDK路径
 7. 锁屏和划掉App不作为推送验收：此版本没有推送。
 
 编译成功仅证明生成安装包；上述实机行为与后台通知均不能据此宣称通过。
+
+## 首次构建结果
+
+2026-10-14依赖审计为0个已报告漏洞，Android同步通过。[首次云构建](https://github.com/Grant-ccc/AI_Customer_Service/actions/runs/38519765641)成功完成assembleDebug并上传APK；对应工程提交df724f0。后续dcaa83d仅清理模板空白。vivo实机安装与收发验收尚未完成。
