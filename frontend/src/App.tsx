@@ -4,6 +4,7 @@ import { api, ApiError, statusLabel, shortId, time } from './api';
 import type { Conversation, Queue } from './api';
 import HandoffSummaryPanel from './HandoffSummaryPanel';
 import ShipmentImport from './ShipmentImport';
+import MobileWorkspace from './MobileWorkspace';
 
 function WindowMark({ large = false }: { large?: boolean }) {
   return <svg className={large ? 'window-mark large' : 'window-mark'} viewBox="0 0 96 112" fill="none" aria-hidden="true">
@@ -77,8 +78,8 @@ function Messages({ conversation, merchant = false, onSeen }: { conversation: Co
     </article>)}
   </div>{newMessages && <button className="new-messages" onClick={() => { atBottom.current = true; scroll.current!.scrollTop = scroll.current!.scrollHeight; setNewMessages(false); }}>有新消息 · 查看 ↓</button>}</div>;
 }
-function Composer({ send, disabled = false, hint }: { send: (content: string, id: string) => Promise<void>; disabled?: boolean; hint: string }) {
-  const [draft, setDraft] = useState('');
+function Composer({ send, disabled = false, hint, initialDraft = '', onDraftChange, requestIds, merchant = false }: { send: (content: string, id: string) => Promise<void>; disabled?: boolean; hint: string; initialDraft?: string; onDraftChange?: (value: string) => void; requestIds?: Record<string, string>; merchant?: boolean }) {
+  const [draft, setDraft] = useState(initialDraft);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const attempt = useRef<{ content: string; id: string } | null>(null);
@@ -87,13 +88,13 @@ function Composer({ send, disabled = false, hint }: { send: (content: string, id
     event?.preventDefault();
     const content = draft.trim();
     if (disabled || sending.current || !content) return;
-    if (!attempt.current || attempt.current.content !== content) attempt.current = { content, id: crypto.randomUUID() };
+    if (!attempt.current || attempt.current.content !== content) { const id = requestIds?.[content] || crypto.randomUUID(); if (requestIds) requestIds[content] = id; attempt.current = { content, id }; }
     sending.current = true; setBusy(true); setError('');
-    try { await send(content, attempt.current.id); setDraft(''); attempt.current = null; }
+    try { await send(content, attempt.current.id); setDraft(''); onDraftChange?.(''); if (requestIds) delete requestIds[content]; attempt.current = null; }
     catch (e) { setError((e as Error).message); }
     finally { sending.current = false; setBusy(false); }
   }
-  return <form className="composer" onSubmit={submit}>{error && <Notice>{error}</Notice>}<label className="sr-only" htmlFor="message-draft">消息内容</label><textarea id="message-draft" placeholder={disabled ? hint : '写下你的问题…'} value={draft} maxLength={2000} disabled={disabled || busy} onChange={e => setDraft(e.target.value)} onKeyDown={e => {
+  return <form className="composer" onSubmit={submit}>{error && <Notice>{error}</Notice>}<label className="sr-only" htmlFor="message-draft">消息内容</label><textarea id="message-draft" placeholder={disabled ? hint : merchant ? '输入回复…' : '写下你的问题…'} value={draft} maxLength={2000} disabled={disabled || busy} onChange={e => { setDraft(e.target.value); onDraftChange?.(e.target.value); }} onKeyDown={e => {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void submit(); }
   }} /><div className="composer-footer"><span>{hint}<span className="keyboard-hint"> · Enter 发送，Shift + Enter 换行</span></span><div><span className="counter">{draft.length}/2000</span><button className="primary" disabled={disabled || busy || !draft.trim()}>{busy ? '发送中…' : '发送'} <span aria-hidden="true">↑</span></button></div></div></form>;
 }
@@ -127,6 +128,28 @@ function Visitor() {
     </section></main><footer className="page-footer">花窗伞客服 · 二团历史模拟 <span>一期试用</span></footer></>;
 }
 function Merchant() {
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width: 820px)').matches);
+  const [mobilePage, setMobilePage] = useState<'messages' | 'work' | 'me'>('messages');
+  const [chatOpen, setChatOpen] = useState(false);
+  const [syncedAt, setSyncedAt] = useState('');
+  const drafts = useRef<Record<string, string>>({});
+  const requestIds = useRef<Record<string, Record<string, string>>>({});
+  const chatVisible = useRef(false); chatVisible.current = !isMobile || chatOpen;
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 820px)');
+    const resize = () => setIsMobile(media.matches);
+    const pop = () => setChatOpen(window.location.hash === '#conversation');
+    media.addEventListener('change', resize);
+    window.addEventListener('popstate', pop);
+    // A refreshed page starts in the inbox, without an orphaned detail entry.
+    if (window.location.hash === '#conversation') history.replaceState(null, '', window.location.pathname + window.location.search);
+    return () => { media.removeEventListener('change', resize); window.removeEventListener('popstate', pop); };
+  }, []);
+  function backToInbox() {
+    setMobilePage('messages');
+    if (window.location.hash === '#conversation') history.back();
+    else setChatOpen(false);
+  }
   const [csrf, setCsrf] = useState('');
   const [checking, setChecking] = useState(true);
   const [error, setError] = useState('');
@@ -144,7 +167,7 @@ function Merchant() {
   function failed(e: unknown) {
     if (!active.current) return;
     setError((e as Error).message);
-    if (e instanceof ApiError && e.status === 401) { active.current = false; setCsrf(''); setDetail(null); selectedRef.current = ''; setSelected(''); setQueue({ pending: [], ended: [] }); }
+    if (e instanceof ApiError && e.status === 401) { active.current = false; setCsrf(''); setDetail(null); selectedRef.current = ''; setSelected(''); setQueue({ pending: [], ended: [] }); setSyncedAt(''); setChatOpen(false); setMobilePage('messages'); drafts.current = {}; requestIds.current = {}; if (window.location.hash === '#conversation') history.replaceState(null, '', window.location.pathname + window.location.search); }
   }
   useEffect(() => {
     let alive = true;
@@ -159,7 +182,7 @@ function Merchant() {
     try {
       const rows = await api<Queue>('/merchant/conversations');
       if (!active.current) return;
-      setQueue(rows);
+      setQueue(rows); setSyncedAt(new Date().toISOString());
       const id = selectedRef.current;
       if (id) accept(await api<Conversation>(`/merchant/conversations/${id}`));
       if (active.current) setError('');
@@ -167,12 +190,13 @@ function Merchant() {
   }
   usePoll(refresh, !!csrf);
   async function choose(id: string) {
+    if (isMobile && !chatOpen) { history.pushState(null, '', '#conversation'); setChatOpen(true); }
     selectedRef.current = id; setSelected(id); setDetail(null); seen.current = 0; readAck.current = ''; setError('');
     try { accept(await api<Conversation>(`/merchant/conversations/${id}`)); } catch (e) { failed(e); }
   }
   const markRead = useCallback(async (sequence: number) => {
     const value = detailRef.current;
-    if (!value?.handoff || !active.current || document.hidden || selectedRef.current !== value.id) return;
+    if (!value?.handoff || !active.current || !chatVisible.current || document.hidden || selectedRef.current !== value.id) return;
     seen.current = Math.max(seen.current, sequence);
     const key = `${value.id}:${value.handoff.id}:${seen.current}`;
     if (readAck.current === key || readBusy.current) return;
@@ -196,12 +220,15 @@ function Merchant() {
   }
   async function logout() {
     if (busy) return; setBusy(true);
-    try { await api('/merchant/logout', {}, csrf); active.current = false; setCsrf(''); setSelected(''); selectedRef.current = ''; setDetail(null); setQueue({ pending: [], ended: [] }); setError(''); }
+    try { await api('/merchant/logout', {}, csrf); active.current = false; setCsrf(''); setSelected(''); selectedRef.current = ''; setDetail(null); setQueue({ pending: [], ended: [] }); setError(''); setSyncedAt(''); setChatOpen(false); setMobilePage('messages'); drafts.current = {}; requestIds.current = {}; if (window.location.hash === '#conversation') history.replaceState(null, '', window.location.pathname + window.location.search); }
     catch (e) { failed(e); } finally { setBusy(false); }
   }
   if (!csrf) return <><Header merchant /><main className="login-layout"><section className="login-intro"><WindowMark large /><p className="eyebrow">商家工作台</p><h1>把每一次咨询，<br />接着聊完。</h1><p>查看历史，接手会话，回复与结束处理。<br />一处完成文字接待。</p></section><form className="login-card" onSubmit={login}><p className="eyebrow">MERCHANT ACCESS</p><h2>登录工作台</h2><p className="muted">使用项目负责人提供的商家账号。</p>{error && <Notice>{error}</Notice>}<label htmlFor="username">账号</label><input id="username" name="username" autoComplete="username" defaultValue="merchant" required maxLength={80} disabled={busy || checking} /><label htmlFor="password">密码</label><input id="password" name="password" type="password" autoComplete="current-password" required maxLength={128} disabled={busy || checking} /><button className="primary" disabled={busy || checking}>{checking ? '检查登录状态…' : busy ? '登录中…' : '进入工作台 →'}</button><span className="login-footnote">仅供商家接待使用</span></form></main></>;
   const state = detail?.status;
   const h = detail?.handoff;
-  return <><Header merchant logout={logout} /><main className="workspace"><aside className="queue-panel"><ShipmentImport csrf={csrf} /><div className="queue-heading"><p className="eyebrow">INBOX</p><h1>接待台<span>{queue.pending.length} 待处理</span></h1></div><div className="queue-tabs"><button className={tab === 'pending' ? 'active' : ''} onClick={() => setTab('pending')}>待处理 <span>{queue.pending.length}</span></button><button className={tab === 'ended' ? 'active' : ''} onClick={() => setTab('ended')}>已结束 <span>{queue.ended.length}</span></button></div><div className="queue-list">{queue[tab].length === 0 && <div className="queue-empty">{tab === 'pending' ? '暂时没有待处理会话' : '暂无已结束会话'}<span>新的咨询会在这里出现。</span></div>}{queue[tab].map(row => <button key={row.id} className={`queue-item ${selected === row.id ? 'selected' : ''}`} onClick={() => void choose(row.id)}><div className="queue-item-head"><strong>{row.channel === 'qq' ? 'QQ 用户' : '访客'} {shortId(row.id)}</strong><time>{time(row.updated_at)}</time></div><p>{row.preview}</p><div className="queue-item-bottom"><span>{statusLabel[row.status]}</span>{row.unread && <span className="unread">未读 <i /></span>}</div></button>)}</div><div className="queue-footer"><i />约 2 秒同步一次</div></aside><section className="workspace-chat">{error && <Notice>{error}</Notice>}{detail ? <><div className="chat-heading"><div><p className="eyebrow">会话记录</p><h2>{detail.channel === 'qq' ? 'QQ 用户' : '访客'} {shortId(detail.id)}</h2></div><Status state={detail.status} /></div><Messages key={detail.id} conversation={detail} merchant onSeen={sequence => void markRead(sequence)} /><Composer key={detail.id} disabled={state !== 'human_active' || busy} hint={state === 'human_active' ? '商家回复 · 仅支持文字' : state === 'waiting_human' ? '接手后可回复' : '本次处理已结束，记录只读'} send={async (content, id) => { try { accept(await api<Conversation>(`/merchant/conversations/${detail.id}/messages`, { content, client_message_id: id }, csrf)); await refresh(); } catch (e) { failed(e); throw e; } }} /></> : <div className="empty-state"><WindowMark large /><h2>{selected ? '正在读取会话…' : '选择一段会话'}</h2><p>完整记录在这里展开。<br />查看不会自动接手会话。</p></div>}</section><aside className="handoff-panel"><p className="eyebrow">HANDOFF</p><h2>{h?.ended_at ? '上次交接（已结束）' : '本次交接'}</h2>{h && detail ? <><div className="handoff-round">第 <strong>{String(h.round).padStart(2, '0')}</strong> 次交接</div><dl><dt>转交原因</dt><dd>{h.reason}</dd><dt>转交时间</dt><dd>{new Date(h.created_at).toLocaleString('zh-CN', { hour12: false })}</dd><dt>转交时记录范围</dt><dd>{h.covered_sequence ? `第 1—${h.covered_sequence} 条消息` : '转交前暂无消息'}</dd></dl><HandoffSummaryPanel conversation={detail} /><div className="handoff-actions"><button className="primary" onClick={() => void action('takeover')} disabled={busy || state !== 'waiting_human'}>{state === 'human_active' ? '已接手' : '接手会话'}</button><button className="secondary" onClick={() => void action('end')} disabled={busy || state !== 'human_active'}>结束本次处理</button><p>结束后保留全部历史。<br />再次转人工后回到待处理。</p></div></> : <p className="muted">选择会话后查看交接信息。</p>}</aside></main></>;
+  const chatContent = <section className="workspace-chat">{error && <Notice>{error}</Notice>}{detail ? <><div className="chat-heading"><div><p className="eyebrow">会话记录</p><h2>{detail.channel === 'qq' ? 'QQ 用户' : '访客'} {shortId(detail.id)}</h2></div><Status state={detail.status} /></div>{isMobile && state === 'waiting_human' && <div className="mobile-takeover"><span>客户正在等待人工回复</span><button className="primary" disabled={busy} onClick={() => void action('takeover')}>{busy ? '正在接手…' : '接手会话'}</button></div>}<Messages key={`messages-${detail.id}`} conversation={detail} merchant onSeen={sequence => void markRead(sequence)} /><Composer merchant requestIds={requestIds.current[detail.id] ||= {}} initialDraft={drafts.current[detail.id] || ''} onDraftChange={value => { drafts.current[detail.id] = value; }} key={`composer-${detail.id}`} disabled={state !== 'human_active' || busy} hint={state === 'human_active' ? '商家回复 · 仅支持文字' : state === 'waiting_human' ? '接手后可回复' : '本次处理已结束，记录只读'} send={async (content, id) => { try { accept(await api<Conversation>(`/merchant/conversations/${detail.id}/messages`, { content, client_message_id: id }, csrf)); await refresh(); } catch (e) { failed(e); throw e; } }} /></> : <div className="empty-state"><WindowMark large /><h2>{selected ? '正在读取会话…' : '选择一段会话'}</h2><p>完整记录在这里展开。<br />查看不会自动接手会话。</p></div>}</section>;
+  const handoffContent = <aside className="handoff-panel"><p className="eyebrow">HANDOFF</p><h2>{h?.ended_at ? '上次交接（已结束）' : '本次交接'}</h2>{h && detail ? <><div className="handoff-round">第 <strong>{String(h.round).padStart(2, '0')}</strong> 次交接</div><dl><dt>转交原因</dt><dd>{h.reason}</dd><dt>转交时间</dt><dd>{new Date(h.created_at).toLocaleString('zh-CN', { hour12: false })}</dd><dt>转交时记录范围</dt><dd>{h.covered_sequence ? `第 1—${h.covered_sequence} 条消息` : '转交前暂无消息'}</dd></dl><HandoffSummaryPanel conversation={detail} /><div className="handoff-actions"><button className="primary" onClick={() => void action('takeover')} disabled={busy || state !== 'waiting_human'}>{state === 'human_active' ? '已接手' : '接手会话'}</button><button className="secondary" onClick={() => void action('end')} disabled={busy || state !== 'human_active'}>结束本次处理</button><p>结束后保留全部历史。<br />再次转人工后回到待处理。</p></div></> : <p className="muted">选择会话后查看交接信息。</p>}</aside>;
+  if (isMobile) return <MobileWorkspace queue={queue} csrf={csrf} error={error} syncedAt={syncedAt} page={mobilePage} setPage={setMobilePage} chatOpen={chatOpen} open={id => void choose(id)} back={backToInbox} chat={chatContent} handoff={handoffContent} logout={() => void logout()} busy={busy} />;
+  return <><Header merchant logout={logout} /><main className="workspace"><aside className="queue-panel"><ShipmentImport csrf={csrf} /><div className="queue-heading"><p className="eyebrow">INBOX</p><h1>接待台<span>{queue.pending.length} 待处理</span></h1></div><div className="queue-tabs"><button className={tab === 'pending' ? 'active' : ''} onClick={() => setTab('pending')}>待处理 <span>{queue.pending.length}</span></button><button className={tab === 'ended' ? 'active' : ''} onClick={() => setTab('ended')}>已结束 <span>{queue.ended.length}</span></button></div><div className="queue-list">{queue[tab].length === 0 && <div className="queue-empty">{tab === 'pending' ? '暂时没有待处理会话' : '暂无已结束会话'}<span>新的咨询会在这里出现。</span></div>}{queue[tab].map(row => <button key={row.id} className={`queue-item ${selected === row.id ? 'selected' : ''}`} onClick={() => void choose(row.id)}><div className="queue-item-head"><strong>{row.channel === 'qq' ? 'QQ 用户' : '访客'} {shortId(row.id)}</strong><time>{time(row.updated_at)}</time></div><p>{row.preview}</p><div className="queue-item-bottom"><span>{statusLabel[row.status]}</span>{row.unread && <span className="unread">未读 <i /></span>}</div></button>)}</div><div className="queue-footer"><i />约 2 秒同步一次</div></aside>{chatContent}{handoffContent}</main></>;
 }
 export default function App() { return window.location.pathname.startsWith('/merchant') ? <Merchant /> : <Visitor />; }
