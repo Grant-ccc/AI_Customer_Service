@@ -30,11 +30,12 @@ QQ_APP_SECRET=你的AppSecret
 ```powershell
 .venv\Scripts\python.exe -m pip install -r backend/requirements.lock.txt
 .venv\Scripts\python.exe -X utf8 scripts/start_qq.py --check
-.venv\Scripts\python.exe -X utf8 scripts/start_qq.py
+.venv\Scripts\python.exe -X utf8 scripts/qq_service.py start
 ```
 
 `--check` 只验证凭据和网关访问，不证明事件权限及消息发送成功。
-出现“QQ机器人已连接”后才开始手机客户端测试。关闭此进程或按 Ctrl+C 停止 QQ 通道。
+运行 `scripts/qq_service.py status` 确认连接后再开始手机客户端测试。日常使用可双击 `scripts/start-qq.cmd`、`scripts/check-qq.cmd`、`scripts/stop-qq.cmd`。主动停止使用 `scripts/qq_service.py stop`；不要仅关闭启动命令窗口来判断后台通道已停止。
+异常恢复、连续失败暂停、日志和电脑重启后的使用方式见[QQ本地守护与启停说明](./QQ本地守护与启停说明.md)。原 `scripts/start_qq.py` 仍可用于前台调试，此模式按 Ctrl+C 停止且没有进程守护。运行中的通道占用文件锁时，`--check` 会拒绝重复进入，改用守护的 `status` 查看状态。
 本地文件锁防止同一目录重复启动；当前不支持多机器同时运行同一机器人。
 WebSocket 由本机主动连接平台，消息收发无需公网回调；外部访问网页工作台仍需公网入口。
 

@@ -205,17 +205,27 @@ def recover_business():
         db.commit()
 
 
+async def persist_status(state, connected_at=None):
+    from .channel_status import record_qq
+    write = asyncio.create_task(asyncio.to_thread(record_qq, state, connected_at))
+    try:
+        await asyncio.shield(write)
+    except asyncio.CancelledError:
+        # Finish an in-flight heartbeat before writing "stopped" during shutdown.
+        await asyncio.gather(write, return_exceptions=True)
+        raise
+
+
 async def serve(app_id, secret, check=False):
     client = QQClient(app_id, secret)
     reporter = None
     try:
         if not check:
-            from .channel_status import record_qq
-            await asyncio.to_thread(record_qq, 'connecting')
+            await persist_status('connecting')
             async def report():
                 while True:
                     try:
-                        await asyncio.to_thread(record_qq, client.connection_state, client.connected_at)
+                        await persist_status(client.connection_state, client.connected_at)
                     except Exception as exc:
                         log.warning('QQ状态记录失败（%s）。', type(exc).__name__)
                     await asyncio.sleep(5)
@@ -239,6 +249,7 @@ async def serve(app_id, secret, check=False):
             reporter.cancel()
             with suppress(asyncio.CancelledError):
                 await reporter
+        if not check:
             with suppress(Exception):
-                await asyncio.to_thread(record_qq, 'stopped', client.connected_at)
+                await persist_status('stopped', client.connected_at)
         await client.http.aclose()

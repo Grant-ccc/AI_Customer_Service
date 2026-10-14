@@ -3,18 +3,23 @@ import argparse
 import asyncio
 import logging
 import os
+import re
 from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'backend'))
 from dotenv import load_dotenv
+from qq_runtime import FileLock, LockBusy, RuntimePaths, managed_run
 
 
 def main():
     parser = argparse.ArgumentParser(description='QQ官方机器人通道')
     parser.add_argument('--check', action='store_true', help='仅验证凭据与网关')
+    parser.add_argument('--managed-token', help=argparse.SUPPRESS)
     args = parser.parse_args()
+    if args.managed_token and (args.check or not re.fullmatch('[0-9a-f]{32}', args.managed_token)):
+        parser.error('守护参数无效')
     load_dotenv(ROOT / 'backend/.env')
     app_id, secret = os.getenv('QQ_APP_ID', '').strip(), os.getenv('QQ_APP_SECRET', '').strip()
     if not app_id or not secret:
@@ -23,21 +28,13 @@ def main():
     # OS file lock is released on crash; prevent two local workers sending duplicates.
     lock_path = ROOT / '.local/qq/worker.lock'
     lock_path.parent.mkdir(parents=True, exist_ok=True)
-    with lock_path.open('a+b') as lock:
-        lock.seek(0)
-        lock.write(b'0')
-        lock.flush()
-        lock.seek(0)
-        try:
-            if os.name == 'nt':
-                import msvcrt
-                msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
-            else:
-                import fcntl
-                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
-            print('QQ通道已有进程运行，请勿重复启动。')
-            return 2
+    try:
+        lock = FileLock(lock_path)
+        lock.__enter__()
+    except LockBusy:
+        print('QQ通道已有进程运行，请勿重复启动。')
+        return 2
+    try:
         logging.basicConfig(level=logging.INFO, format='%(asctime)s %(message)s')
         logging.getLogger('httpx').setLevel(logging.WARNING)
         from app.init_db import ensure_schema
@@ -46,12 +43,17 @@ def main():
         try:
             if not args.check:
                 ensure_schema(engine)
-            asyncio.run(serve(app_id, secret, check=args.check))
+            coroutine = serve(app_id, secret, check=args.check)
+            if args.managed_token:
+                coroutine = managed_run(coroutine, RuntimePaths(ROOT / '.local/qq'), args.managed_token)
+            asyncio.run(coroutine)
         except KeyboardInterrupt:
             print('QQ通道已停止。')
         except Exception as exc:
             print(f'QQ启动失败（{type(exc).__name__}），请检查本地配置、网络与数据库。')
             return 1
+    finally:
+        lock.__exit__(None, None, None)
     return 0
 
 

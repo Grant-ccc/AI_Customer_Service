@@ -1,4 +1,5 @@
 import asyncio
+import threading
 from datetime import timedelta
 from fastapi.testclient import TestClient
 import pytest
@@ -58,3 +59,28 @@ def test_check_does_not_publish_status_and_failed_start_stops(monkeypatch):
     with pytest.raises(qq_gateway.PlatformError):
         asyncio.run(qq_gateway.serve('test-app', 'test-secret'))
     assert recorded[0] == 'connecting' and recorded[-1] == 'stopped'
+
+
+def test_shutdown_waits_for_inflight_heartbeat_before_stopped(monkeypatch):
+    entered, release = threading.Event(), threading.Event()
+    states = []
+    def record(state, connected=None):
+        if state == 'connected':
+            entered.set()
+            assert release.wait(3)
+        states.append(state)
+    monkeypatch.setattr(channel_status, 'record_qq', record)
+    async def run():
+        heartbeat = asyncio.create_task(qq_gateway.persist_status('connected'))
+        assert await asyncio.to_thread(entered.wait, 2)
+        heartbeat.cancel()
+        try:
+            await asyncio.sleep(.01)
+            assert not heartbeat.done()
+        finally:
+            release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await heartbeat
+        await qq_gateway.persist_status('stopped')
+    asyncio.run(run())
+    assert states == ['connected', 'stopped']
