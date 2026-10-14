@@ -130,7 +130,7 @@ function Visitor() {
     </section></main><footer className="page-footer">花窗伞客服 · 二团历史模拟 <span>一期试用</span></footer></>;
 }
 function Merchant() {
-  const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width: 820px)').matches);
+  const [isMobile, setIsMobile] = useState(() => window.matchMedia('(max-width: 820px), (pointer: coarse) and (max-height: 500px)').matches);
   const [mobilePage, setMobilePage] = useState<'messages' | 'work' | 'me'>('messages');
   const [chatOpen, setChatOpen] = useState(false);
   const [syncedAt, setSyncedAt] = useState('');
@@ -138,7 +138,7 @@ function Merchant() {
   const requestIds = useRef<Record<string, Record<string, string>>>({});
   const chatVisible = useRef(false); chatVisible.current = !isMobile || chatOpen;
   useEffect(() => {
-    const media = window.matchMedia('(max-width: 820px)');
+    const media = window.matchMedia('(max-width: 820px), (pointer: coarse) and (max-height: 500px)');
     const resize = () => setIsMobile(media.matches);
     const pop = () => setChatOpen(window.location.hash === '#conversation');
     media.addEventListener('change', resize);
