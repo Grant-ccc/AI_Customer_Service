@@ -14,10 +14,12 @@ def run():
         context = browser.new_context(viewport={'width': 390, 'height': 844}, is_mobile=True, device_scale_factor=1)
         page = context.new_page()
         errors, writes = [], []
-        state = {'status': 'waiting_human', 'extra_rows': False, 'fail_send': False, 'fail_end': False, 'fail_queue': False, 'logged_in': True}
+        state = {'status': 'waiting_human', 'summary_status': 'ready', 'extra_rows': False, 'fail_send': False, 'fail_end': False, 'fail_queue': False, 'logged_in': True}
         messages = [{'id': 'm1', 'sequence': 1, 'role': 'user', 'content': '这款可以定制图案吗？', 'created_at': NOW}]
         def detail():
-            return {'id': 'qq-demo-001', 'channel': 'qq', 'status': state['status'], 'revision': len(messages) + (state['status'] != 'waiting_human'), 'sequence': len(messages), 'messages': messages, 'ai': {'enabled': False, 'status': 'idle', 'simulation_date': '2025-02-01'}, 'handoff': {'id': 'handoff-1', 'round': 1, 'reason': '客户申请人工。' * 80, 'covered_sequence': 1, 'created_at': NOW, 'ended_at': NOW if state['status'] == 'ended' else None, 'summary_status': 'pending', 'summary': None, 'summary_start_sequence': None, 'summary_covered_sequence': None}}
+            fact = lambda text: {'text': text, 'sequence': 1, 'quote': '验收用依据原文：' + text}
+            summary = {'request': [fact('确认能否定制图案'), fact('核实制作时间'), fact('补充诉求。' * 30)], 'known': [fact('客户尚未提供图案')], 'attempted': [fact('已询问定制需求')], 'materials': []}
+            return {'id': 'qq-demo-001', 'channel': 'qq', 'status': state['status'], 'revision': len(messages) + (state['status'] != 'waiting_human'), 'sequence': len(messages), 'messages': messages, 'ai': {'enabled': False, 'status': 'idle', 'simulation_date': '2025-02-01'}, 'handoff': {'id': 'handoff-1', 'round': 1, 'reason': '客户申请人工。' * 80, 'covered_sequence': 1, 'created_at': NOW, 'ended_at': NOW if state['status'] == 'ended' else None, 'summary_status': state['summary_status'], 'summary': summary if state['summary_status'] == 'ready' else None, 'summary_start_sequence': 1, 'summary_covered_sequence': 1}}
         def route_api(route):
             path = route.request.url.split('/api')[-1]
             status, payload = 200, {}
@@ -119,6 +121,33 @@ def run():
         assert takeover_box and takeover_box['y'] + takeover_box['height'] <= 844, 'Takeover must be visible in chat without scrolling'
         page.get_by_role('button', name='交接详情', exact=True).click()
         expect(page.locator('.mobile-handoff-sheet')).to_be_visible()
+        expect(page.get_by_role('heading', name='客户想解决什么')).to_be_visible()
+        expect(page.locator('.summary-evidence blockquote').first).to_be_hidden()
+        assert page.locator('.summary-fold[open], .handoff-metadata[open], .more-requests[open]').count() == 0
+        page.locator('.request-overview .summary-evidence summary').first.click()
+        expect(page.locator('.request-overview blockquote').first).to_be_visible()
+        page.locator('.request-overview .summary-evidence summary').first.click()
+        page.locator('.more-requests > summary').click()
+        expect(page.locator('.more-requests .fact-full-text')).to_be_visible()
+        page.locator('.more-requests .fact-full-text > summary').click()
+        expect(page.locator('.more-requests .fact-full-text')).to_have_attribute('open', '')
+        page.locator('.more-requests > summary').click()
+        page.locator('.summary-fold > summary').first.click()
+        expect(page.get_by_text('客户尚未提供图案', exact=True)).to_be_visible()
+        page.locator('.summary-fold > summary').first.click()
+        page.locator('.handoff-metadata > summary').click()
+        expect(page.get_by_text('仅整理本轮第 1—1 条消息。', exact=True)).to_be_visible()
+        page.locator('.handoff-metadata > summary').click()
+        for summary_status, text in [('generating', '正在整理摘要…'), ('failed', '摘要生成失败，请查看完整记录。')]:
+            state['summary_status'] = summary_status
+            expect(page.get_by_text(text, exact=True)).to_be_visible(timeout=10000)
+            expect(page.get_by_text('为什么转人工', exact=True)).to_be_visible()
+        state['summary_status'] = 'ready'
+        expect(page.get_by_role('heading', name='客户想解决什么')).to_be_visible()
+        expect(page.get_by_text('确认能否定制图案', exact=True)).to_be_visible(timeout=10000)
+        page.locator('.sheet-body').evaluate('(el) => { el.scrollTop = 0; }')
+        page.screenshot(path=str(OUT / 'handoff-compact.png'))
+        page.locator('.handoff-reason > summary').click()
         close_button = page.locator('.mobile-handoff-sheet .sheet-title').get_by_role('button', name='关闭', exact=True)
         body = page.get_by_role('region', name='交接详情正文')
         for width, height in [(390, 844), (360, 640)]:
