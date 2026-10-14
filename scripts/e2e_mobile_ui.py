@@ -17,7 +17,7 @@ def run():
         state = {'status': 'waiting_human', 'fail_send': False, 'fail_queue': False, 'logged_in': True}
         messages = [{'id': 'm1', 'sequence': 1, 'role': 'user', 'content': '这款可以定制图案吗？', 'created_at': NOW}]
         def detail():
-            return {'id': 'qq-demo-001', 'channel': 'qq', 'status': state['status'], 'revision': len(messages) + (state['status'] != 'waiting_human'), 'sequence': len(messages), 'messages': messages, 'ai': {'enabled': False, 'status': 'idle', 'simulation_date': '2025-02-01'}, 'handoff': {'id': 'handoff-1', 'round': 1, 'reason': '客户申请人工', 'covered_sequence': 1, 'created_at': NOW, 'ended_at': NOW if state['status'] == 'ended' else None, 'summary_status': 'pending', 'summary': None, 'summary_start_sequence': None, 'summary_covered_sequence': None}}
+            return {'id': 'qq-demo-001', 'channel': 'qq', 'status': state['status'], 'revision': len(messages) + (state['status'] != 'waiting_human'), 'sequence': len(messages), 'messages': messages, 'ai': {'enabled': False, 'status': 'idle', 'simulation_date': '2025-02-01'}, 'handoff': {'id': 'handoff-1', 'round': 1, 'reason': '客户申请人工。' * 80, 'covered_sequence': 1, 'created_at': NOW, 'ended_at': NOW if state['status'] == 'ended' else None, 'summary_status': 'pending', 'summary': None, 'summary_start_sequence': None, 'summary_covered_sequence': None}}
         def route_api(route):
             path = route.request.url.split('/api')[-1]
             status, payload = 200, {}
@@ -79,11 +79,20 @@ def run():
         page.get_by_role('button', name='关闭', exact=True).click()
         page.locator('.mobile-contact').click()
         expect(nav).to_have_count(0)
-        expect(page.get_by_label('消息内容')).to_be_disabled()
+        expect(page.get_by_label('消息内容')).to_be_hidden()
         expect(page.locator('.mobile-takeover').get_by_role('button', name='接手会话', exact=True)).to_be_enabled()
+        takeover_box = page.locator('.mobile-takeover button').bounding_box()
+        assert takeover_box and takeover_box['y'] + takeover_box['height'] <= 844, 'Takeover must be visible in chat without scrolling'
         page.get_by_role('button', name='交接详情', exact=True).click()
         expect(page.locator('.mobile-handoff-sheet')).to_be_visible()
-        page.locator('.mobile-handoff-sheet').get_by_role('button', name='接手会话', exact=True).click()
+        page.locator('.mobile-handoff-sheet').evaluate('(el) => { el.scrollTop = el.scrollHeight; }')
+        close_button = page.locator('.mobile-handoff-sheet .sheet-title').get_by_role('button', name='关闭', exact=True)
+        close_box = close_button.bounding_box()
+        sheet_box = page.locator('.mobile-handoff-sheet').bounding_box()
+        assert close_box and sheet_box and sheet_box['y'] <= close_box['y'] < sheet_box['y'] + 100, 'Close must stay at the top of a scrolled sheet'
+        close_button.click()
+        page.locator('.mobile-takeover').get_by_role('button', name='接手会话', exact=True).click()
+        page.get_by_role('button', name='交接详情', exact=True).click()
         expect(page.get_by_role('button', name='已接手', exact=True)).to_be_disabled()
         page.get_by_role('button', name='关闭', exact=True).click()
         expect(page.get_by_label('消息内容')).to_be_enabled()
