@@ -53,6 +53,14 @@ class Handoff(Base):
     ended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class MerchantAlert(Base):
+    """转人工事务内记录；记录存在不代表已向手机发送。"""
+    __tablename__ = 'merchant_alerts'
+    handoff_id: Mapped[str] = mapped_column(ForeignKey('handoffs.id'), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+
+
 class VisitorSession(Base):
     __tablename__ = 'visitor_sessions'
     token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)

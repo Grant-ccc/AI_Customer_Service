@@ -79,6 +79,8 @@ def open_handoff(db, c, previous, reason, event):
     enqueue_summary(db, c, h)
     c.status = 'waiting_human'
     add_message(db, c, 'system', event)
+    from .merchant_alerts import record_handoff_alert
+    record_handoff_alert(db, h)
     return h
 
 
