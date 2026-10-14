@@ -29,6 +29,7 @@ class QQClient:
         self.token, self.expires = '', 0
         self.token_lock = asyncio.Lock()
         self.session, self.seq = None, None
+        self.connection_state, self.connected_at = 'connecting', None
 
     async def access_token(self):
         async with self.token_lock:
@@ -112,13 +113,16 @@ class QQClient:
                             elif op == 1:
                                 await ws.send(json.dumps({'op': 1, 'd': self.seq}))
                             elif op in (7, 9):
+                                self.connection_state = 'reconnecting'
                                 if op == 9:
                                     self.session, self.seq = None, None
                                 break
                             elif op == 0:
                                 event, body = payload.get('t'), payload.get('d') or {}
-                                if event == 'READY':
-                                    self.session = body['session_id']
+                                if event in ('READY', 'RESUMED'):
+                                    if event == 'READY':
+                                        self.session = body['session_id']
+                                    self.connection_state, self.connected_at = 'connected', now()
                                     delay = 2
                                     log.info('QQ机器人已连接，等待私聊或群内@消息。')
                                 if event in ('C2C_MESSAGE_CREATE', 'GROUP_AT_MESSAGE_CREATE'):
@@ -126,12 +130,15 @@ class QQClient:
                                 # Only advance after the event transaction has completed.
                                 self.seq = payload.get('s', self.seq)
                     finally:
+                        self.connection_state = 'reconnecting'
                         heart.cancel()
                         with suppress(asyncio.CancelledError):
                             await heart
             except asyncio.CancelledError:
+                self.connection_state = 'stopped'
                 raise
             except Exception as exc:
+                self.connection_state = 'reconnecting'
                 # Never log raw HTTP/WS exceptions: URLs or bodies may contain secrets.
                 log.warning('QQ连接中断（%s），稍后重连。', type(exc).__name__)
             await asyncio.sleep(delay)
@@ -200,7 +207,19 @@ def recover_business():
 
 async def serve(app_id, secret, check=False):
     client = QQClient(app_id, secret)
+    reporter = None
     try:
+        if not check:
+            from .channel_status import record_qq
+            await asyncio.to_thread(record_qq, 'connecting')
+            async def report():
+                while True:
+                    try:
+                        await asyncio.to_thread(record_qq, client.connection_state, client.connected_at)
+                    except Exception as exc:
+                        log.warning('QQ状态记录失败（%s）。', type(exc).__name__)
+                    await asyncio.sleep(5)
+            reporter = asyncio.create_task(report())
         await client.gateway()
         if check:
             print('QQ凭据和网关访问检查通过（尚未测试消息收发）。')
@@ -216,4 +235,10 @@ async def serve(app_id, secret, check=False):
                 job.cancel()
             await asyncio.gather(*jobs, return_exceptions=True)
     finally:
+        if reporter:
+            reporter.cancel()
+            with suppress(asyncio.CancelledError):
+                await reporter
+            with suppress(Exception):
+                await asyncio.to_thread(record_qq, 'stopped', client.connected_at)
         await client.http.aclose()

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { api, ApiError, statusLabel, shortId, time } from './api';
-import type { Conversation, Queue } from './api';
+import type { Conversation, Queue, QqChannelStatus } from './api';
 import HandoffSummaryPanel from './HandoffSummaryPanel';
 import ShipmentImport from './ShipmentImport';
 import MobileWorkspace from './MobileWorkspace';
@@ -134,6 +134,7 @@ function Merchant() {
   const [mobilePage, setMobilePage] = useState<'messages' | 'work' | 'me'>('messages');
   const [chatOpen, setChatOpen] = useState(false);
   const [syncedAt, setSyncedAt] = useState('');
+  const [qqStatus, setQqStatus] = useState<QqChannelStatus | null>(null);
   const drafts = useRef<Record<string, string>>({});
   const requestIds = useRef<Record<string, Record<string, string>>>({});
   const chatVisible = useRef(false); chatVisible.current = !isMobile || chatOpen;
@@ -169,7 +170,7 @@ function Merchant() {
   function failed(e: unknown) {
     if (!active.current) return;
     setError((e as Error).message);
-    if (e instanceof ApiError && e.status === 401) { active.current = false; setCsrf(''); setDetail(null); selectedRef.current = ''; setSelected(''); setQueue({ pending: [], ended: [] }); setSyncedAt(''); setChatOpen(false); setMobilePage('messages'); drafts.current = {}; requestIds.current = {}; if (window.location.hash === '#conversation') history.replaceState(null, '', window.location.pathname + window.location.search); }
+    if (e instanceof ApiError && e.status === 401) { active.current = false; setCsrf(''); setDetail(null); selectedRef.current = ''; setSelected(''); setQueue({ pending: [], ended: [] }); setSyncedAt(''); setQqStatus(null); setChatOpen(false); setMobilePage('messages'); drafts.current = {}; requestIds.current = {}; if (window.location.hash === '#conversation') history.replaceState(null, '', window.location.pathname + window.location.search); }
   }
   useEffect(() => {
     let alive = true;
@@ -191,6 +192,9 @@ function Merchant() {
     } catch (e) { failed(e); }
   }
   usePoll(refresh, !!csrf);
+  usePoll(async () => {
+      try { const status = await api<QqChannelStatus>('/merchant/channels/qq'); if (active.current) setQqStatus(status); } catch (e) { if (e instanceof ApiError && e.status === 401) { failed(e); return; } if (active.current) setQqStatus(old => ({ state: 'unavailable', last_connected_at: old?.last_connected_at || null, last_heartbeat_at: old?.last_heartbeat_at || null, checked_at: null })); }
+  }, !!csrf);
   async function choose(id: string) {
     if (isMobile && !chatOpen) { history.pushState(null, '', '#conversation'); setChatOpen(true); }
     selectedRef.current = id; setSelected(id); setDetail(null); seen.current = 0; readAck.current = ''; setError('');
@@ -222,7 +226,7 @@ function Merchant() {
   }
   async function logout() {
     if (busy) return; setBusy(true);
-    try { await api('/merchant/logout', {}, csrf); active.current = false; setCsrf(''); setSelected(''); selectedRef.current = ''; setDetail(null); setQueue({ pending: [], ended: [] }); setError(''); setSyncedAt(''); setChatOpen(false); setMobilePage('messages'); drafts.current = {}; requestIds.current = {}; if (window.location.hash === '#conversation') history.replaceState(null, '', window.location.pathname + window.location.search); }
+    try { await api('/merchant/logout', {}, csrf); active.current = false; setCsrf(''); setSelected(''); selectedRef.current = ''; setDetail(null); setQueue({ pending: [], ended: [] }); setError(''); setSyncedAt(''); setQqStatus(null); setChatOpen(false); setMobilePage('messages'); drafts.current = {}; requestIds.current = {}; if (window.location.hash === '#conversation') history.replaceState(null, '', window.location.pathname + window.location.search); }
     catch (e) { failed(e); } finally { setBusy(false); }
   }
   if (!csrf) return <><Header merchant /><main className="login-layout"><section className="login-intro"><WindowMark large /><p className="eyebrow">商家工作台</p><h1>把每一次咨询，<br />接着聊完。</h1><p>查看历史，接手会话，回复与结束处理。<br />一处完成文字接待。</p></section><form className="login-card" onSubmit={login}><p className="eyebrow">MERCHANT ACCESS</p><h2>登录工作台</h2><p className="muted">使用项目负责人提供的商家账号。</p>{error && <Notice>{error}</Notice>}<label htmlFor="username">账号</label><input id="username" name="username" autoComplete="username" defaultValue="merchant" required maxLength={80} disabled={busy || checking} /><label htmlFor="password">密码</label><input id="password" name="password" type="password" autoComplete="current-password" required maxLength={128} disabled={busy || checking} /><button className="primary" disabled={busy || checking}>{checking ? '检查登录状态…' : busy ? '登录中…' : '进入工作台 →'}</button><span className="login-footnote">仅供商家接待使用</span></form></main></>;
@@ -230,7 +234,7 @@ function Merchant() {
   const h = detail?.handoff;
   const chatContent = <section className="workspace-chat">{error && <Notice>{error}</Notice>}{detail ? <><div className="chat-heading"><div><p className="eyebrow">会话记录</p><h2>{detail.channel === 'qq' ? 'QQ 用户' : '访客'} {shortId(detail.id)}</h2></div><Status state={detail.status} /></div><Messages key={`messages-${detail.id}`} conversation={detail} merchant onSeen={sequence => void markRead(sequence)} />{isMobile && state === 'waiting_human' && <div className="mobile-takeover"><span>客户正在等待人工回复 · 接手后即可回复</span><button className="primary" disabled={busy} onClick={() => void action('takeover')}>{busy ? '正在接手…' : '接手会话'}</button></div>}<Composer merchant requestIds={requestIds.current[detail.id] ||= {}} initialDraft={drafts.current[detail.id] || ''} onDraftChange={value => { drafts.current[detail.id] = value; }} key={`composer-${detail.id}`} disabled={state !== 'human_active' || busy} hint={state === 'human_active' ? '商家回复 · 仅支持文字' : state === 'waiting_human' ? '接手后可回复' : '本次处理已结束，记录只读'} send={async (content, id) => { try { accept(await api<Conversation>(`/merchant/conversations/${detail.id}/messages`, { content, client_message_id: id }, csrf)); await refresh(); } catch (e) { failed(e); throw e; } }} /></> : <div className="empty-state"><WindowMark large /><h2>{selected ? '正在读取会话…' : '选择一段会话'}</h2><p>完整记录在这里展开。<br />查看不会自动接手会话。</p></div>}</section>;
   const handoffContent = <aside className="handoff-panel">{!isMobile && <><p className="eyebrow">HANDOFF</p><h2>{h?.ended_at ? '上次交接（已结束）' : '本次交接'}</h2></>}{h && detail ? <>{!isMobile && <><div className="handoff-round">第 <strong>{String(h.round).padStart(2, '0')}</strong> 次交接</div><dl><dt>转交原因</dt><dd>{h.reason}</dd><dt>转交时间</dt><dd>{new Date(h.created_at).toLocaleString('zh-CN', { hour12: false })}</dd><dt>转交时记录范围</dt><dd>{h.covered_sequence ? `第 1—${h.covered_sequence} 条消息` : '转交前暂无消息'}</dd></dl></>}<HandoffSummaryPanel key={h.id} conversation={detail} compact={isMobile} /><div className="handoff-actions"><button className="primary" onClick={() => void action('takeover')} disabled={busy || state !== 'waiting_human'}>{state === 'human_active' ? '已接手' : '接手会话'}</button><EndConversationButton busy={busy} disabled={state !== 'human_active'} label="结束本次处理" confirm={() => action('end')} /><p>结束后保留全部历史。<br />再次转人工后回到待处理。</p></div></> : <p className="muted">选择会话后查看交接信息。</p>}</aside>;
-  if (isMobile) return <MobileWorkspace queue={queue} csrf={csrf} error={error} syncedAt={syncedAt} page={mobilePage} setPage={setMobilePage} chatOpen={chatOpen} open={id => void choose(id)} back={backToInbox} chat={chatContent} handoff={handoffContent} endAction={state === 'human_active' ? <EndConversationButton busy={busy} confirm={() => action('end')} /> : null} logout={() => void logout()} busy={busy} />;
+  if (isMobile) return <MobileWorkspace queue={queue} csrf={csrf} error={error} syncedAt={syncedAt} qqStatus={qqStatus} page={mobilePage} setPage={setMobilePage} chatOpen={chatOpen} open={id => void choose(id)} back={backToInbox} chat={chatContent} handoff={handoffContent} endAction={state === 'human_active' ? <EndConversationButton busy={busy} confirm={() => action('end')} /> : null} logout={() => void logout()} busy={busy} />;
   return <><Header merchant logout={logout} /><main className="workspace"><aside className="queue-panel"><ShipmentImport csrf={csrf} /><div className="queue-heading"><p className="eyebrow">INBOX</p><h1>接待台<span>{queue.pending.length} 待处理</span></h1></div><div className="queue-tabs"><button className={tab === 'pending' ? 'active' : ''} onClick={() => setTab('pending')}>待处理 <span>{queue.pending.length}</span></button><button className={tab === 'ended' ? 'active' : ''} onClick={() => setTab('ended')}>已结束 <span>{queue.ended.length}</span></button></div><div className="queue-list">{queue[tab].length === 0 && <div className="queue-empty">{tab === 'pending' ? '暂时没有待处理会话' : '暂无已结束会话'}<span>新的咨询会在这里出现。</span></div>}{queue[tab].map(row => <button key={row.id} className={`queue-item ${selected === row.id ? 'selected' : ''}`} onClick={() => void choose(row.id)}><div className="queue-item-head"><strong>{row.channel === 'qq' ? 'QQ 用户' : '访客'} {shortId(row.id)}</strong><time>{time(row.updated_at)}</time></div><p>{row.preview}</p><div className="queue-item-bottom"><span>{statusLabel[row.status]}</span>{row.unread && <span className="unread">未读 <i /></span>}</div></button>)}</div><div className="queue-footer"><i />约 2 秒同步一次</div></aside>{chatContent}{handoffContent}</main></>;
 }
 export default function App() { return window.location.pathname.startsWith('/merchant') ? <Merchant /> : <Visitor />; }

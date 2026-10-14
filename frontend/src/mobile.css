@@ -52,6 +52,15 @@
 .service-emblem { font: 25px Georgia, serif; color: var(--green); }
 .mobile-service-card strong { font-size: 14px; }
 .mobile-service-card p { font-size: 11px; color: var(--muted); margin-top: 6px; }
+.qq-channel-card { border: 1px solid var(--line); padding: 15px; border-radius: 13px; margin-top: 12px; font-size: 12px; }
+.qq-channel-card > div { display: flex; align-items: center; justify-content: space-between; }
+.qq-channel-state { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.qq-channel-state i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.qq-channel-card.online .qq-channel-state { color: var(--green); }
+.qq-channel-card.offline .qq-channel-state, .qq-channel-card.unavailable .qq-channel-state { color: var(--wine); }
+.qq-channel-card p { font-size: 11px; line-height: 1.8; color: var(--muted); margin: 10px 0; }
+.qq-channel-card dl { display: grid; grid-template-columns: 65px 1fr; gap: 7px; margin: 0; }
+.qq-channel-card dt, .qq-channel-card dd { font-size: 10px; margin: 0; line-height: 1.6; }
 .mobile-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 15px; }
 .mobile-stats button { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 13px; background: transparent; padding: 16px 10px; text-align: left; color: var(--muted); font-size: 11px; }
 .mobile-stats strong { display: block; color: #293e37; font-size: 28px; margin-top: 3px; }

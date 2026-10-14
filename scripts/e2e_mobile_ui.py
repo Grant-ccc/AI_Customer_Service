@@ -14,7 +14,7 @@ def run():
         context = browser.new_context(viewport={'width': 390, 'height': 844}, is_mobile=True, device_scale_factor=1)
         page = context.new_page()
         errors, writes = [], []
-        state = {'status': 'waiting_human', 'summary_status': 'ready', 'extra_rows': False, 'fail_send': False, 'fail_end': False, 'fail_queue': False, 'logged_in': True}
+        state = {'status': 'waiting_human', 'qq_status': 'online', 'summary_status': 'ready', 'extra_rows': False, 'fail_send': False, 'fail_end': False, 'fail_queue': False, 'logged_in': True}
         messages = [{'id': 'm1', 'sequence': 1, 'role': 'user', 'content': '这款可以定制图案吗？', 'created_at': NOW}]
         def detail():
             fact = lambda text: {'text': text, 'sequence': 1, 'quote': '验收用依据原文：' + text}
@@ -25,6 +25,8 @@ def run():
             status, payload = 200, {}
             if path == '/merchant/session':
                 status, payload = (200, {'csrf': 'test-csrf'}) if state['logged_in'] else (401, {'detail': '请重新登录'})
+            elif path == '/merchant/channels/qq':
+                payload = {'state': state['qq_status'], 'last_connected_at': NOW, 'last_heartbeat_at': NOW, 'checked_at': NOW}
             elif path == '/merchant/conversations':
                 row = {'id': 'qq-demo-001', 'channel': 'qq', 'status': state['status'], 'preview': messages[-1]['content'], 'unread': True, 'updated_at': NOW}
                 payload = {'pending': [] if state['status'] == 'ended' else [row], 'ended': [row] if state['status'] == 'ended' else []}
@@ -83,6 +85,14 @@ def run():
         expect(page.locator('.mobile-contact')).to_have_count(1)
         expect(page.locator('.mobile-contact')).to_contain_text('ended-demo')
         nav.get_by_role('button', name='工作台', exact=True).click()
+        expect(page.get_by_label('QQ 通道状态')).to_contain_text('已连接')
+        state['qq_status'] = 'offline'
+        expect(page.get_by_label('QQ 通道状态')).to_contain_text('已离线', timeout=10000)
+        expect(page.get_by_text('已同步', exact=True)).to_be_visible()
+        state['qq_status'] = 'reconnecting'
+        expect(page.get_by_label('QQ 通道状态')).to_contain_text('重连中', timeout=10000)
+        state['qq_status'] = 'online'
+        expect(page.get_by_label('QQ 通道状态')).to_contain_text('已连接', timeout=10000)
         expect(page.locator('.mobile-stats button').first).to_contain_text('待接手2')
         expect(page.locator('.mobile-stats button').nth(1)).to_contain_text('接待中1')
         expect(page.locator('.mobile-task-list .mobile-contact').first.locator('.contact-status')).to_have_text('待接手')

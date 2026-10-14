@@ -5,6 +5,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from .auth import router as auth_router
 from .conversations import router as conversation_router
 from .shipments import router as shipment_router
+from .channel_status import router as channel_router
 
 @asynccontextmanager
 async def lifespan(app):
@@ -20,6 +21,7 @@ app = FastAPI(title='花窗伞客服', version='0.2.0', lifespan=lifespan)
 app.include_router(auth_router)
 app.include_router(conversation_router)
 app.include_router(shipment_router)
+app.include_router(channel_router)
 
 
 @app.middleware('http')

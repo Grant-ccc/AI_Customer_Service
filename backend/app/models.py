@@ -115,6 +115,14 @@ class QQDelivery(Base):
     status: Mapped[str] = mapped_column(String(24), default='pending', index=True)
 
 
+class ChannelRuntime(Base):
+    __tablename__ = 'channel_runtime'
+    name: Mapped[str] = mapped_column(String(24), primary_key=True)
+    state: Mapped[str] = mapped_column(String(24))
+    heartbeat_at: Mapped[datetime] = mapped_column(DateTime)
+    connected_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class Shipment(Base):
     __tablename__ = 'shipments'
     tracking_number: Mapped[str] = mapped_column(String(64), primary_key=True)

@@ -4,6 +4,7 @@ export type Summary = Record<'request' | 'known' | 'attempted' | 'materials', Su
 export type Conversation = { id: string; channel?: 'web' | 'qq'; status: 'ai_ready' | 'waiting_human' | 'human_active' | 'ended'; revision: number; sequence: number; messages: Message[]; ai: { enabled: boolean; simulation_date: string; status: string }; handoff?: { id: string; round: number; reason: string; covered_sequence: number; created_at: string; ended_at: string | null; summary_status: string; summary: Summary | null; summary_start_sequence: number | null; summary_covered_sequence: number | null } };
 export type Row = { id: string; channel?: 'web' | 'qq'; status: Conversation['status']; preview: string; unread: boolean; updated_at: string };
 export type Queue = { pending: Row[]; ended: Row[] };
+export type QqChannelStatus = { state: 'online' | 'offline' | 'connecting' | 'reconnecting' | 'unknown' | 'unavailable'; last_connected_at: string | null; last_heartbeat_at: string | null; checked_at: string | null };
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }

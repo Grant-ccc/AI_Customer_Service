@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { shortId, statusLabel, time } from './api';
-import type { Queue, Row } from './api';
+import type { Queue, Row, QqChannelStatus } from './api';
 import ShipmentImport from './ShipmentImport';
+import QqStatusPanel from './QqStatusPanel';
 
 type Page = 'messages' | 'work' | 'me';
 type IconName = 'message' | 'grid' | 'user' | 'search' | 'back' | 'arrow' | 'file' | 'clock';
@@ -30,8 +31,8 @@ function Contact({ row, open }: { row: Row; open: (id: string) => void }) {
   </button>;
 }
 
-export default function MobileWorkspace({ queue, csrf, error, syncedAt, page, setPage, chatOpen, open, back, chat, handoff, endAction, logout, busy }: {
-  queue: Queue; csrf: string; error: string; syncedAt: string; page: Page; setPage: (page: Page) => void;
+export default function MobileWorkspace({ queue, csrf, error, syncedAt, qqStatus, page, setPage, chatOpen, open, back, chat, handoff, endAction, logout, busy }: {
+  queue: Queue; csrf: string; error: string; syncedAt: string; qqStatus: QqChannelStatus | null; page: Page; setPage: (page: Page) => void;
   chatOpen: boolean; open: (id: string) => void; back: () => void; chat: ReactNode; handoff: ReactNode; endAction: ReactNode; logout: () => void; busy: boolean;
 }) {
   const [filter, setFilter] = useState<'all' | 'unread' | 'waiting' | 'active' | 'ended'>('all');
@@ -60,6 +61,7 @@ export default function MobileWorkspace({ queue, csrf, error, syncedAt, page, se
       </>}
       {page === 'work' && <main className="mobile-work">
         <div className="mobile-service-card"><span className="service-emblem">Q</span><div><strong>QQ 与网页接待</strong><p>在这里接手、回复和结束会话</p></div></div>
+        <QqStatusPanel status={qqStatus} syncError={!!error} />
         <div className="mobile-stats"><button onClick={() => inbox('waiting')}><span className="stat-icon"><MobileIcon name="clock" /></span><span>待接手<strong>{waiting.length}</strong></span><MobileIcon name="arrow" /></button><button onClick={() => inbox('active')}><span className="stat-icon wine"><MobileIcon name="message" /></span><span>接待中<strong>{active.length}</strong></span><MobileIcon name="arrow" /></button></div>
         <div className="mobile-section-heading"><h2>需要你处理</h2><span>{waiting.length} 待接手 · {active.length} 接待中</span></div>
         <div className="mobile-task-list">{queue.pending.slice().sort((a, b) => Number(b.status === 'waiting_human') - Number(a.status === 'waiting_human') || Date.parse(b.updated_at) - Date.parse(a.updated_at)).slice(0, 5).map(row => <Contact key={row.id} row={row} open={open} />)}{!queue.pending.length && <p className="mobile-card-empty">暂时没有待处理事项</p>}</div>
