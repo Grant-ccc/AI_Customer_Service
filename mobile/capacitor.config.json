@@ -1,0 +1,12 @@
+{
+  "appId": "com.huachuangsan.merchant",
+  "appName": "花窗伞商家",
+  "webDir": "www",
+  "server": {
+    "url": "https://67dfee5e1d2e.eicp.fun/merchant",
+    "cleartext": false
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}
