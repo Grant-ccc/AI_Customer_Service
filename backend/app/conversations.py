@@ -1,7 +1,7 @@
 from uuid import UUID
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, ConfigDict, field_validator
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, func
 from sqlalchemy.orm import Session
 from .db import get_db
 from .models import Conversation, Message, Handoff, now
@@ -83,6 +83,19 @@ def message_data(m):
             'created_at': m.created_at.isoformat() + 'Z'}
 
 
+def needs_reply(db, c, h, is_qq=False):
+    if not h or c.status not in ('waiting_human', 'human_active'):
+        return False
+    if c.status == 'waiting_human':
+        return True
+    query = select(func.max(Message.sequence)).where(Message.conversation_id == c.id, Message.role == 'merchant')
+    if is_qq:
+        from .models import QQDelivery
+        query = query.join(QQDelivery, QQDelivery.message_id == Message.id).where(QQDelivery.status == 'sent')
+    last_reply = db.scalar(query) or 0
+    return last_reply <= max(c.latest_user_sequence, h.covered_sequence)
+
+
 def snapshot(db, c, merchant=False):
     from .simple_ai import public_status
     result = {'id': c.id, 'status': c.status, 'revision': c.revision, 'sequence': c.sequence,
@@ -99,6 +112,7 @@ def snapshot(db, c, merchant=False):
                 message['qq_delivery'] = deliveries.get(message['id'])
         from .handoff_summary import summary_data
         h = latest_handoff(db, c)
+        result['needs_reply'] = needs_reply(db, c, h, bool(binding))
         result['handoff'] = None if not h else {
             'id': h.id, 'round': h.round, 'reason': h.reason,
             'covered_sequence': h.covered_sequence,
@@ -197,6 +211,7 @@ def merchant_list(request: Request, db: Session = Depends(get_db)):
         from .models import QQBinding
         row['channel'] = 'qq' if db.scalar(select(QQBinding.id).where(
             QQBinding.conversation_id == c.id)) else 'web'
+        row['needs_reply'] = needs_reply(db, c, h, row['channel'] == 'qq')
         (ended if h.ended_at else pending).append(row)
     return {'pending': pending, 'ended': ended}
 

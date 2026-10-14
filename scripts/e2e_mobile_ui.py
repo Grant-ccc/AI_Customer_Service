@@ -28,11 +28,11 @@ def run():
             elif path == '/merchant/channels/qq':
                 payload = {'state': state['qq_status'], 'last_connected_at': NOW, 'last_heartbeat_at': NOW, 'checked_at': NOW}
             elif path == '/merchant/conversations':
-                row = {'id': 'qq-demo-001', 'channel': 'qq', 'status': state['status'], 'preview': messages[-1]['content'], 'unread': True, 'updated_at': NOW}
+                row = {'id': 'qq-demo-001', 'channel': 'qq', 'status': state['status'], 'needs_reply': state['status'] != 'ended', 'preview': messages[-1]['content'], 'unread': True, 'updated_at': NOW}
                 payload = {'pending': [] if state['status'] == 'ended' else [row], 'ended': [row] if state['status'] == 'ended' else []}
                 if state['extra_rows']:
                     for extra_id, extra_status in [('waiting-demo', 'waiting_human'), ('active-demo', 'human_active'), ('ended-demo', 'ended')]:
-                        extra = dict(row, id=extra_id, status=extra_status, unread=False, preview=extra_id)
+                        extra = dict(row, id=extra_id, status=extra_status, needs_reply=extra_status != 'ended', unread=False, preview=extra_id)
                         payload['ended' if extra_status == 'ended' else 'pending'].append(extra)
                 if state['fail_queue']:
                     status, payload = 503, {'detail': '会话同步暂时中断'}
@@ -81,6 +81,9 @@ def run():
         page.get_by_role('button', name='接待中', exact=True).click()
         expect(page.locator('.mobile-contact')).to_have_count(1)
         expect(page.locator('.mobile-contact')).to_contain_text('active-demo')
+        expect(page.locator('.mobile-contact .needs-reply-badge')).to_have_text('待回复')
+        page.get_by_role('button', name='待回复', exact=True).click()
+        expect(page.locator('.mobile-contact')).to_have_count(3)
         page.get_by_role('button', name='已结束', exact=True).click()
         expect(page.locator('.mobile-contact')).to_have_count(1)
         expect(page.locator('.mobile-contact')).to_contain_text('ended-demo')

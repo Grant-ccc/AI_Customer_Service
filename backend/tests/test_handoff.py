@@ -30,6 +30,28 @@ def payload(content, identity=None):
     return {'content': content, 'client_message_id': identity or str(uuid4())}
 
 
+def test_reading_does_not_clear_reply_needed(database):
+    v, cid = visitor()
+    m = merchant()
+    v.post('/api/visitor/handoff')
+    root = f'/api/merchant/conversations/{cid}'
+    detail = m.get(root).json()
+    handoff = {'handoff_id': detail['handoff']['id']}
+    assert detail['needs_reply']
+    m.post(root + '/read', json={**handoff, 'sequence': detail['sequence']})
+    row = m.get('/api/merchant/conversations').json()['pending'][0]
+    assert not row['unread'] and row['needs_reply']
+    assert m.post(root + '/takeover', json=handoff).json()['needs_reply']
+    assert not m.post(root + '/messages', json=payload('我来协助处理。')).json()['needs_reply']
+    v.post('/api/visitor/messages', json=payload('还有一个问题'))
+    detail = m.get(root).json()
+    m.post(root + '/read', json={**handoff, 'sequence': detail['sequence']})
+    row = m.get('/api/merchant/conversations').json()['pending'][0]
+    assert not row['unread'] and row['needs_reply']
+    assert not m.post(root + '/end', json=handoff).json()['needs_reply']
+    assert 'needs_reply' not in v.get('/api/visitor/conversation').json()
+
+
 def test_full_loop_and_private_data(database):
     v, cid = visitor()
     other, _ = visitor()

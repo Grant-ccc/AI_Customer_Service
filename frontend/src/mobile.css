@@ -35,6 +35,9 @@
 .contact-status { font-size: 10px; padding: 3px 6px; border-radius: 5px; background: #edf0e6; color: var(--green); }
 .contact-status.waiting_human { background: #eee4ca; color: var(--wine); }
 .contact-status.ended { color: var(--muted); background: #eeece3; }
+.needs-reply-badge { font-size: 10px; padding: 3px 6px; border-radius: 5px; background: #f1e2da; color: var(--wine); }
+.reply-followup { width: 100%; margin-top: 12px; display: flex; justify-content: space-between; align-items: center; gap: 10px; min-height: 46px; padding: 12px; background: #f2eee3; border-radius: 10px; color: var(--green); font-size: 12px; }
+.reply-followup > span:last-child { font-size: 10px; color: var(--muted); }
 .channel-label { font-size: 10px; color: #909380; }
 .mobile-unread { position: absolute; left: 35px; top: 22px; height: 10px; width: 10px; background: var(--wine); border: 2px solid var(--paper); border-radius: 50%; }
 .mobile-empty { padding: 65px 8px 30px; text-align: center; color: var(--muted); }

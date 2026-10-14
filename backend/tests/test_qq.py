@@ -68,6 +68,22 @@ def test_private_handoff_and_workbench_reply(qq):
     assert [item['reply_seq'] for item in deliveries] == list(range(1, len(deliveries) + 1))
 
 
+@pytest.mark.parametrize('delivery', ['pending', 'sending', 'sent', 'failed', 'unknown'])
+def test_qq_needs_reply_until_platform_accepts(qq, delivery):
+    qq_bridge.finish(receive(text='转人工'))
+    with qq() as db:
+        c = db.scalar(select(Conversation))
+        c.status = 'human_active'
+        reply = add_message(db, c, 'merchant', '我来核实。')
+        db.flush()
+        db.get(QQDelivery, reply.id).status = delivery
+        db.commit()
+        assert snapshot(db, c, merchant=True)['needs_reply'] == (delivery != 'sent')
+        c.status = 'ended'
+        db.commit()
+        assert not snapshot(db, c, merchant=True)['needs_reply']
+
+
 @pytest.mark.parametrize('text', ['查订单', '我要申请退款', '转人工'])
 def test_group_redirect_without_handoff(qq, text):
     qq_bridge.finish(receive(text=text, group='g1'))
