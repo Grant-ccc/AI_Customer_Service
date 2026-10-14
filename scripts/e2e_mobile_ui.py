@@ -14,7 +14,7 @@ def run():
         context = browser.new_context(viewport={'width': 390, 'height': 844}, is_mobile=True, device_scale_factor=1)
         page = context.new_page()
         errors, writes = [], []
-        state = {'status': 'waiting_human', 'fail_send': False, 'fail_queue': False, 'logged_in': True}
+        state = {'status': 'waiting_human', 'fail_send': False, 'fail_end': False, 'fail_queue': False, 'logged_in': True}
         messages = [{'id': 'm1', 'sequence': 1, 'role': 'user', 'content': '这款可以定制图案吗？', 'created_at': NOW}]
         def detail():
             return {'id': 'qq-demo-001', 'channel': 'qq', 'status': state['status'], 'revision': len(messages) + (state['status'] != 'waiting_human'), 'sequence': len(messages), 'messages': messages, 'ai': {'enabled': False, 'status': 'idle', 'simulation_date': '2025-02-01'}, 'handoff': {'id': 'handoff-1', 'round': 1, 'reason': '客户申请人工。' * 80, 'covered_sequence': 1, 'created_at': NOW, 'ended_at': NOW if state['status'] == 'ended' else None, 'summary_status': 'pending', 'summary': None, 'summary_start_sequence': None, 'summary_covered_sequence': None}}
@@ -33,8 +33,11 @@ def run():
                 state['status'] = 'human_active'
                 payload = detail()
             elif path.endswith('/end'):
-                state['status'] = 'ended'
-                payload = detail()
+                if state['fail_end']:
+                    status, payload = 503, {'detail': '测试结束失败'}
+                else:
+                    state['status'] = 'ended'
+                    payload = detail()
             elif path.endswith('/messages'):
                 body = route.request.post_data_json
                 writes.append(body)
@@ -129,8 +132,20 @@ def run():
         page.screenshot(path=str(OUT / 'chat.png'))
         page.get_by_role('button', name='交接详情', exact=True).click()
         page.screenshot(path=str(OUT / 'handoff.png'))
-        page.get_by_role('button', name='结束本次处理', exact=True).click()
         page.keyboard.press('Escape')
+        page.get_by_role('button', name='结束处理', exact=True).click()
+        expect(page.get_by_role('dialog', name='结束本次人工接待？')).to_be_visible()
+        page.get_by_role('button', name='继续接待', exact=True).click()
+        assert state['status'] == 'human_active', 'Cancel must not end the conversation'
+        page.get_by_role('button', name='结束处理', exact=True).click()
+        state['fail_end'] = True
+        page.get_by_role('button', name='确认结束', exact=True).click()
+        expect(page.locator('.end-confirm-error')).to_contain_text('结束失败')
+        assert state['status'] == 'human_active'
+        state['fail_end'] = False
+        page.get_by_role('button', name='确认结束', exact=True).click()
+        expect(page.get_by_role('dialog', name='结束本次人工接待？')).to_be_hidden()
+        expect(page.get_by_role('button', name='结束处理', exact=True)).to_have_count(0)
         expect(page.get_by_label('消息内容')).to_be_disabled()
         page.go_back()
         expect(page.get_by_role('navigation', name='主导航')).to_be_visible()
