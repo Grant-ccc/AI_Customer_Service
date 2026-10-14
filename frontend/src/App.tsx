@@ -6,6 +6,7 @@ import HandoffSummaryPanel from './HandoffSummaryPanel';
 import ShipmentImport from './ShipmentImport';
 import MobileWorkspace from './MobileWorkspace';
 import EndConversationButton from './EndConversationButton';
+import DeliveryStatus from './DeliveryStatus';
 
 function WindowMark({ large = false }: { large?: boolean }) {
   return <svg className={large ? 'window-mark large' : 'window-mark'} viewBox="0 0 96 112" fill="none" aria-hidden="true">
@@ -75,7 +76,7 @@ function Messages({ conversation, merchant = false, onSeen }: { conversation: Co
     {conversation.messages.map(message => message.role === 'system' ? <div className="system-event" key={message.id} data-sequence={message.sequence}>[系统消息] {message.content}</div> : <article key={message.id} data-sequence={message.sequence} className={`message ${message.role === (merchant ? 'merchant' : 'user') ? 'own' : 'other'}`}>
       <div className="message-meta">{message.role === 'user' ? (merchant ? '访客' : '你') : message.role === 'assistant' ? 'AI 助手' : '商家'}<time dateTime={message.created_at}>{time(message.created_at)}</time></div>
       <div className="bubble">{message.role === 'assistant' && <><strong>[智能回复]</strong><br /></>}{message.content}</div>
-      {merchant && message.qq_delivery && <div className="message-meta">QQ · {({ pending: '等待发送', sending: '发送中', sent: '平台已接受', expired: '窗口过期，未发送', quota: '次数用尽，未发送', failed: '发送失败', unknown: '发送结果待核对' } as Record<string, string>)[message.qq_delivery] || '待核对'}</div>}
+      {merchant && conversation.channel === 'qq' && (message.role === 'merchant' || message.qq_delivery) && <DeliveryStatus status={message.qq_delivery} content={message.content} />}
     </article>)}
   </div>{newMessages && <button className="new-messages" onClick={() => { atBottom.current = true; scroll.current!.scrollTop = scroll.current!.scrollHeight; setNewMessages(false); }}>有新消息 · 查看 ↓</button>}</div>;
 }
@@ -95,9 +96,9 @@ function Composer({ send, disabled = false, hint, initialDraft = '', onDraftChan
     catch (e) { setError((e as Error).message); }
     finally { sending.current = false; setBusy(false); }
   }
-  return <form className="composer" onSubmit={submit}>{error && <Notice>{error}</Notice>}<label className="sr-only" htmlFor="message-draft">消息内容</label><textarea id="message-draft" placeholder={disabled ? hint : merchant ? '输入回复…' : '写下你的问题…'} value={draft} maxLength={2000} disabled={disabled || busy} onChange={e => { setDraft(e.target.value); onDraftChange?.(e.target.value); }} onKeyDown={e => {
+  return <form className="composer" onSubmit={submit}>{busy && <p className="submission-status" role="status">正在提交到工作台…</p>}{error && <Notice>{error}<p>草稿已保留，可重试提交。重试会核对同一条提交，QQ 投递结果请查看消息状态。</p></Notice>}<label className="sr-only" htmlFor="message-draft">消息内容</label><textarea id="message-draft" placeholder={disabled ? hint : merchant ? '输入回复…' : '写下你的问题…'} value={draft} maxLength={2000} disabled={disabled || busy} onChange={e => { setDraft(e.target.value); onDraftChange?.(e.target.value); }} onKeyDown={e => {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void submit(); }
-  }} /><div className="composer-footer"><span>{hint}<span className="keyboard-hint"> · Enter 发送，Shift + Enter 换行</span></span><div><span className="counter">{draft.length}/2000</span><button className="primary" disabled={disabled || busy || !draft.trim()}>{busy ? '发送中…' : '发送'} <span aria-hidden="true">↑</span></button></div></div></form>;
+  }} /><div className="composer-footer"><span>{hint}<span className="keyboard-hint"> · Enter 发送，Shift + Enter 换行</span></span><div><span className="counter">{draft.length}/2000</span><button className="primary" disabled={disabled || busy || !draft.trim()}>{busy ? '提交中…' : error ? '重试提交' : '发送'} <span aria-hidden="true">↑</span></button></div></div></form>;
 }
 function Visitor() {
   const [csrf, setCsrf] = useState('');

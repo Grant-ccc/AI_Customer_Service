@@ -91,6 +91,18 @@
 .end-confirm-dialog .end-confirm-error { color: var(--wine); }
 .end-confirm-actions { display: flex; gap: 12px; margin-top: 24px; }
 .end-confirm-actions button { flex: 1; min-height: 46px; border-radius: 10px; padding: 10px; }
+.submission-status { font-size: 12px; color: var(--muted); padding: 0 0 10px; }
+.composer .notice p { font-size: 11px; margin-top: 6px; }
+.delivery-status { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; max-width: 90%; margin-top: 7px; color: var(--muted); font-size: 10px; line-height: 1.6; }
+.own .delivery-status { align-items: flex-end; text-align: right; }
+.delivery-label { display: flex; align-items: center; gap: 5px; }
+.delivery-label::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: #889b78; flex-shrink: 0; }
+.delivery-help { opacity: .9; }
+.delivery-status.needs-attention { color: var(--wine); }
+.needs-attention .delivery-label::before { background: var(--wine); }
+.delivery-copy { min-height: 44px; padding: 8px 12px; border: 1px solid #d7bdb2; border-radius: 9px; color: var(--wine); background: var(--paper); font-size: 11px; }
+.manual-copy { display: block; width: 100%; text-align: left; }
+.manual-copy textarea { display: block; width: 100%; min-height: 80px; margin-top: 5px; border: 1px solid var(--line); border-radius: 8px; padding: 10px; background: var(--paper); color: #293e37; font-size: 14px; }
 .mobile-chat-content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .mobile-chat-content .workspace-chat { height: auto; min-height: 0; flex: 1; border: 0; }
 .mobile-chat-content .chat-heading { padding: 8px 22px 18px; }

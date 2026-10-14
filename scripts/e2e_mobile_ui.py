@@ -118,6 +118,7 @@ def run():
         state['fail_send'] = True
         page.get_by_role('button', name='发送', exact=False).click()
         expect(page.locator('.composer [role=alert]')).to_contain_text('测试断网')
+        expect(page.get_by_role('button', name='重试提交', exact=False)).to_be_enabled()
         page.get_by_role('button', name='返回会话列表').click()
         page.locator('.mobile-contact').click()
         expect(page.get_by_label('消息内容')).to_have_value('可以的，请发一下您想定制的图案。')
@@ -129,6 +130,22 @@ def run():
         expect(page.locator('.history-wrap')).to_have_count(1)
         expect(page.locator('.bubble')).to_have_count(2)
         expect(page.get_by_text('QQ · 平台已接受')).to_be_visible()
+        for delivery, label in [('pending', '等待发送'), ('sending', '发送中'), ('failed', '发送失败'), ('expired', '窗口过期，未发送'), ('quota', '次数用尽，未发送'), ('unknown', '发送结果待核对')]:
+            messages[-1]['qq_delivery'] = delivery
+            expect(page.locator('.delivery-label')).to_have_text('QQ · ' + label, timeout=10000)
+        expect(page.locator('.delivery-help')).to_contain_text('先到 QQ 核对')
+        # Stub clipboard writes so the check never changes the user's clipboard.
+        page.evaluate("() => { navigator.clipboard.writeText = async () => { throw new Error('Clipboard unavailable'); }; }")
+        page.get_by_role('button', name='复制回复', exact=True).click()
+        expect(page.get_by_label('待复制的回复')).to_have_value(messages[-1]['content'])
+        page.evaluate('() => { navigator.clipboard.writeText = async text => { window.__copiedReply = text; }; }')
+        page.get_by_role('button', name='复制回复', exact=True).click()
+        expect(page.get_by_role('button', name='已复制回复')).to_be_visible()
+        assert page.evaluate('window.__copiedReply') == messages[-1]['content']
+        assert len(writes) == 2, 'Copy and unknown delivery must not send or retry a QQ message'
+        page.screenshot(path=str(OUT / 'delivery-attention.png'))
+        messages[-1]['qq_delivery'] = 'sent'
+        expect(page.locator('.delivery-label')).to_have_text('QQ · 平台已接受', timeout=10000)
         page.screenshot(path=str(OUT / 'chat.png'))
         page.get_by_role('button', name='交接详情', exact=True).click()
         page.screenshot(path=str(OUT / 'handoff.png'))
