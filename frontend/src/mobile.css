@@ -100,12 +100,14 @@
 .mobile-chat-content .composer-footer { font-size: 10px; line-height: 1.6; }
 .mobile-chat-content .composer-footer > span { flex: 1; min-width: 0; }
 .mobile-chat-content .composer .primary { min-height: 44px; border-radius: 10px; }
-.mobile-handoff-sheet { inset: auto 0 0; margin: 0 auto; width: 100%; max-width: 600px; max-height: 88dvh; border: 0; border-radius: 20px 20px 0 0; background: var(--paper); color: #293e37; padding: 0 0 env(safe-area-inset-bottom); overflow: auto; }
+.mobile-handoff-sheet { inset: auto 0 0; margin: 0 auto; width: 100%; max-width: 600px; height: 88dvh; max-height: 88dvh; border: 0; border-radius: 20px 20px 0 0; background: var(--paper); color: #293e37; padding: 0; overflow: hidden; }
+.mobile-handoff-sheet[open] { display: flex; flex-direction: column; }
 .mobile-handoff-sheet::backdrop { background: #19352a66; }
-.sheet-title { position: sticky; top: 0; z-index: 1; background: var(--paper); display: flex; justify-content: space-between; align-items: center; padding: 20px 22px; border-bottom: 1px solid var(--line); }
+.sheet-title { flex-shrink: 0; background: var(--paper); display: flex; justify-content: space-between; align-items: center; padding: 20px 22px; border-bottom: 1px solid var(--line); }
+.sheet-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; padding-bottom: env(safe-area-inset-bottom); }
 .sheet-title h2 { font-size: 20px; }
 .sheet-title button { min-height: 44px; border-radius: 10px; }
-.mobile-handoff-sheet .handoff-panel { border: 0; padding: 22px; background: transparent; }
+.mobile-handoff-sheet .handoff-panel { border: 0; padding: 22px; background: transparent; overflow: visible; }
 .mobile-handoff-sheet .handoff-panel .eyebrow { display: none; }
 .mobile-handoff-sheet .handoff-panel h2 { font-size: 18px; }
 .mobile-handoff-sheet .handoff-panel dl { display: block; }

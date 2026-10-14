@@ -48,7 +48,7 @@ export default function MobileWorkspace({ queue, csrf, error, syncedAt, page, se
     {chatOpen ? <>
       <div className="mobile-chat-toolbar"><button className="icon-button" aria-label="返回会话列表" onClick={back}><MobileIcon name="back" /></button><span>会话</span><button className="text-button" onClick={() => sheet.current?.showModal()}>交接详情</button></div>
       <section className="mobile-chat-content">{chat}</section>
-      <dialog className="mobile-handoff-sheet" ref={sheet} aria-labelledby="mobile-handoff-title"><div className="sheet-title"><h2 id="mobile-handoff-title">交接详情</h2><button className="secondary" onClick={() => sheet.current?.close()}>关闭</button></div>{handoff}</dialog>
+      <dialog className="mobile-handoff-sheet" ref={sheet} aria-labelledby="mobile-handoff-title"><div className="sheet-title"><h2 id="mobile-handoff-title">交接详情</h2><button className="secondary" onClick={() => sheet.current?.close()}>关闭</button></div><div className="sheet-body" role="region" aria-label="交接详情正文" tabIndex={0}>{handoff}</div></dialog>
     </> : <>
       <header className="mobile-page-header"><div><p className="mobile-brand">花窗伞 · 商家</p><h1>{page === 'messages' ? '消息' : page === 'work' ? '工作台' : '我的'}</h1></div><span className={`mobile-sync ${error ? 'interrupted' : ''}`} role="status"><i />{error ? '同步中断' : syncedAt ? '已同步' : '同步中'}</span></header>
       {error && <div className="notice" role="alert">{error}</div>}

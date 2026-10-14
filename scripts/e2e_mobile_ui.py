@@ -85,12 +85,23 @@ def run():
         assert takeover_box and takeover_box['y'] + takeover_box['height'] <= 844, 'Takeover must be visible in chat without scrolling'
         page.get_by_role('button', name='交接详情', exact=True).click()
         expect(page.locator('.mobile-handoff-sheet')).to_be_visible()
-        page.locator('.mobile-handoff-sheet').evaluate('(el) => { el.scrollTop = el.scrollHeight; }')
         close_button = page.locator('.mobile-handoff-sheet .sheet-title').get_by_role('button', name='关闭', exact=True)
-        close_box = close_button.bounding_box()
-        sheet_box = page.locator('.mobile-handoff-sheet').bounding_box()
-        assert close_box and sheet_box and sheet_box['y'] <= close_box['y'] < sheet_box['y'] + 100, 'Close must stay at the top of a scrolled sheet'
+        body = page.get_by_role('region', name='交接详情正文')
+        for width, height in [(390, 844), (360, 640)]:
+            page.set_viewport_size({'width': width, 'height': height})
+            body.evaluate('(el) => { el.scrollTop = 0; }')
+            before = close_button.bounding_box()
+            body.hover()
+            page.mouse.wheel(0, 2000)
+            page.wait_for_function("document.querySelector('.sheet-body').scrollTop > 100")
+            page.wait_for_function("Math.abs(document.querySelector('.sheet-body').scrollHeight - document.querySelector('.sheet-body').clientHeight - document.querySelector('.sheet-body').scrollTop) < 2")
+            after = close_button.bounding_box()
+            assert before and after and abs(before['y'] - after['y']) < 1, 'Close must not move while the actual detail body scrolls'
+            assert page.locator('.mobile-handoff-sheet').evaluate('(el) => el.scrollTop') == 0, 'The dialog shell must not scroll'
+            assert close_button.evaluate('(el) => { const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); }'), 'Close must remain exposed to touch'
+        page.screenshot(path=str(OUT / 'handoff-scrolled.png'))
         close_button.click()
+        page.set_viewport_size({'width': 390, 'height': 844})
         page.locator('.mobile-takeover').get_by_role('button', name='接手会话', exact=True).click()
         page.get_by_role('button', name='交接详情', exact=True).click()
         expect(page.get_by_role('button', name='已接手', exact=True)).to_be_disabled()
