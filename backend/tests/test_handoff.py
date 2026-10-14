@@ -52,6 +52,25 @@ def test_reading_does_not_clear_reply_needed(database):
     assert 'needs_reply' not in v.get('/api/visitor/conversation').json()
 
 
+def test_end_rejects_changed_conversation_until_reconfirmed(database):
+    v, cid = visitor()
+    m = merchant()
+    v.post('/api/visitor/messages', json=payload('需要协助'))
+    detail = v.post('/api/visitor/handoff').json()
+    root = f'/api/merchant/conversations/{cid}'
+    h = m.get(root).json()['handoff']['id']
+    detail = m.post(root + '/takeover', json={'handoff_id': h}).json()
+    assert detail['end_checks']['needs_reply']
+    stale_revision = detail['revision']
+    v.post('/api/visitor/messages', json=payload('还有新问题'))
+    assert m.post(root + '/end', json={'handoff_id': h, 'expected_revision': stale_revision}).status_code == 409
+    detail = m.get(root).json()
+    assert detail['status'] == 'human_active' and detail['handoff']['ended_at'] is None
+    request = {'handoff_id': h, 'expected_revision': detail['revision']}
+    assert m.post(root + '/end', json=request).status_code == 200
+    assert m.post(root + '/end', json=request).status_code == 200  # Lost acknowledgment retry remains idempotent.
+
+
 def test_full_loop_and_private_data(database):
     v, cid = visitor()
     other, _ = visitor()

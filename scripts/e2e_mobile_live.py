@@ -81,6 +81,7 @@ def run():
             staff.locator('.composer .primary').click()
             expect(staff.get_by_label('消息内容')).to_have_value('')
             expect(user.locator('.bubble').filter(has_text=reply)).to_have_count(1, timeout=12000)
+            assert not staff.request.get(BASE + '/api/merchant/conversations/' + conversation_id).json()['needs_reply']
             checks.append('Real browser login, handoff, takeover, merchant reply received in visitor browser')
 
             # Drop only the acknowledgment after the real API accepted the message.
@@ -129,6 +130,7 @@ def run():
             assert next(r for r in queue['pending'] if r['id'] == conversation_id)['unread']
             staff.get_by_role('button', name='有新消息', exact=False).click()
             staff.wait_for_function("async (id) => { const r = await fetch('/api/merchant/conversations'); const q = await r.json(); return q.pending.find(x => x.id === id)?.unread === false; }", arg=conversation_id)
+            assert staff.request.get(BASE + '/api/merchant/conversations/' + conversation_id).json()['needs_reply'], 'Reading must not clear reply-needed state'
             checks.append('Long history scroll preserved; new-message indicator and real unread acknowledgment verified')
 
             staff.set_viewport_size({'width': 390, 'height': 420})
@@ -157,6 +159,7 @@ def run():
                 report['not_tested'].append('Browser visibility transition unavailable in this headless session')
             other.close()
             staff.get_by_role('button', name='结束处理', exact=True).click()
+            expect(staff.get_by_label('结束前提醒')).to_contain_text('待回复')
             staff.get_by_role('button', name='确认结束', exact=True).click()
             expect(user.locator('.status')).to_have_text('本次已结束', timeout=12000)
             expect(staff.get_by_label('消息内容')).to_be_disabled()

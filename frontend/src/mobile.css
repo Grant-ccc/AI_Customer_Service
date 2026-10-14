@@ -101,6 +101,9 @@
 .end-confirm-dialog h2 { font-size: 20px; }
 .end-confirm-dialog p { margin-top: 15px; font-size: 13px; line-height: 1.9; color: var(--muted); }
 .end-confirm-dialog .end-confirm-error { color: var(--wine); }
+.end-warnings { padding: 12px 12px 12px 28px; margin: 16px 0; border-radius: 10px; background: #f3e7dc; color: var(--wine); font-size: 12px; line-height: 1.8; }
+.end-warnings li + li { margin-top: 8px; }
+.end-confirm-dialog { max-height: calc(100dvh - 40px); overflow-y: auto; }
 .end-confirm-actions { display: flex; gap: 12px; margin-top: 24px; }
 .end-confirm-actions button { flex: 1; min-height: 46px; border-radius: 10px; padding: 10px; }
 .submission-status { font-size: 12px; color: var(--muted); padding: 0 0 10px; }

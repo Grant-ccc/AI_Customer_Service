@@ -14,12 +14,12 @@ def run():
         context = browser.new_context(viewport={'width': 390, 'height': 844}, is_mobile=True, device_scale_factor=1)
         page = context.new_page()
         errors, writes = [], []
-        state = {'status': 'waiting_human', 'qq_status': 'online', 'summary_status': 'ready', 'extra_rows': False, 'fail_send': False, 'fail_end': False, 'fail_queue': False, 'logged_in': True}
+        state = {'status': 'waiting_human', 'qq_status': 'online', 'summary_status': 'ready', 'end_alerts': {'qq_pending': 0, 'qq_failed': 0, 'qq_unknown': 0}, 'extra_rows': False, 'fail_send': False, 'fail_end': False, 'fail_prepare': False, 'fail_queue': False, 'logged_in': True}
         messages = [{'id': 'm1', 'sequence': 1, 'role': 'user', 'content': '这款可以定制图案吗？', 'created_at': NOW}]
         def detail():
             fact = lambda text: {'text': text, 'sequence': 1, 'quote': '验收用依据原文：' + text}
             summary = {'request': [fact('确认能否定制图案'), fact('核实制作时间'), fact('补充诉求。' * 30)], 'known': [fact('客户尚未提供图案')], 'attempted': [fact('已询问定制需求')], 'materials': []}
-            return {'id': 'qq-demo-001', 'channel': 'qq', 'status': state['status'], 'revision': len(messages) + (state['status'] != 'waiting_human'), 'sequence': len(messages), 'messages': messages, 'ai': {'enabled': False, 'status': 'idle', 'simulation_date': '2025-02-01'}, 'handoff': {'id': 'handoff-1', 'round': 1, 'reason': '客户申请人工。' * 80, 'covered_sequence': 1, 'created_at': NOW, 'ended_at': NOW if state['status'] == 'ended' else None, 'summary_status': state['summary_status'], 'summary': summary if state['summary_status'] == 'ready' else None, 'summary_start_sequence': 1, 'summary_covered_sequence': 1}}
+            return {'id': 'qq-demo-001', 'channel': 'qq', 'needs_reply': state['status'] != 'ended', 'end_checks': {'needs_reply': state['status'] != 'ended', **state['end_alerts']}, 'status': state['status'], 'revision': len(messages) + (state['status'] != 'waiting_human'), 'sequence': len(messages), 'messages': messages, 'ai': {'enabled': False, 'status': 'idle', 'simulation_date': '2025-02-01'}, 'handoff': {'id': 'handoff-1', 'round': 1, 'reason': '客户申请人工。' * 80, 'covered_sequence': 1, 'created_at': NOW, 'ended_at': NOW if state['status'] == 'ended' else None, 'summary_status': state['summary_status'], 'summary': summary if state['summary_status'] == 'ready' else None, 'summary_start_sequence': 1, 'summary_covered_sequence': 1}}
         def route_api(route):
             path = route.request.url.split('/api')[-1]
             status, payload = 200, {}
@@ -62,7 +62,7 @@ def run():
             elif path == '/merchant/logout':
                 state['logged_in'] = False
             elif path.startswith('/merchant/conversations/'):
-                payload = detail()
+                status, payload = (503, {'detail': '测试无法核对最新会话'}) if state['fail_prepare'] else (200, detail())
             else:
                 raise AssertionError(f'Unexpected API request: {path}')
             route.fulfill(status=status, content_type='application/json', body=json.dumps(payload, ensure_ascii=False))
@@ -223,16 +223,29 @@ def run():
         page.get_by_role('button', name='交接详情', exact=True).click()
         page.screenshot(path=str(OUT / 'handoff.png'))
         page.keyboard.press('Escape')
+        state['end_alerts'] = {'qq_pending': 1, 'qq_failed': 1, 'qq_unknown': 1}
         page.get_by_role('button', name='结束处理', exact=True).click()
         expect(page.get_by_role('dialog', name='结束本次人工接待？')).to_be_visible()
+        warnings = page.get_by_label('结束前提醒')
+        expect(warnings).to_contain_text('还有待回复事项')
+        expect(warnings).to_contain_text('不会取消已排队消息')
+        expect(warnings).to_contain_text('未成功投递')
+        expect(warnings).to_contain_text('结果不明确')
         page.get_by_role('button', name='继续接待', exact=True).click()
         assert state['status'] == 'human_active', 'Cancel must not end the conversation'
+        state['fail_prepare'] = True
+        page.get_by_role('button', name='结束处理', exact=True).click()
+        expect(page.locator('.end-confirm-error')).to_contain_text('无法核对最新会话')
+        expect(page.get_by_role('button', name='确认结束', exact=True)).to_be_disabled()
+        page.get_by_role('button', name='继续接待', exact=True).click()
+        state['fail_prepare'] = False
         page.get_by_role('button', name='结束处理', exact=True).click()
         state['fail_end'] = True
         page.get_by_role('button', name='确认结束', exact=True).click()
-        expect(page.locator('.end-confirm-error')).to_contain_text('结束失败')
+        expect(page.locator('.end-confirm-error')).to_contain_text('结束未成功')
         assert state['status'] == 'human_active'
         state['fail_end'] = False
+        page.get_by_role('button', name='重新核对', exact=True).click()
         page.get_by_role('button', name='确认结束', exact=True).click()
         expect(page.get_by_role('dialog', name='结束本次人工接待？')).to_be_hidden()
         expect(page.get_by_role('button', name='结束处理', exact=True)).to_have_count(0)

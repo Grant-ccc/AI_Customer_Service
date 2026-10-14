@@ -68,7 +68,7 @@ def test_private_handoff_and_workbench_reply(qq):
     assert [item['reply_seq'] for item in deliveries] == list(range(1, len(deliveries) + 1))
 
 
-@pytest.mark.parametrize('delivery', ['pending', 'sending', 'sent', 'failed', 'unknown'])
+@pytest.mark.parametrize('delivery', ['pending', 'sending', 'sent', 'failed', 'unknown', 'expired', 'quota'])
 def test_qq_needs_reply_until_platform_accepts(qq, delivery):
     qq_bridge.finish(receive(text='转人工'))
     with qq() as db:
@@ -78,7 +78,11 @@ def test_qq_needs_reply_until_platform_accepts(qq, delivery):
         db.flush()
         db.get(QQDelivery, reply.id).status = delivery
         db.commit()
-        assert snapshot(db, c, merchant=True)['needs_reply'] == (delivery != 'sent')
+        state = snapshot(db, c, merchant=True)
+        assert state['needs_reply'] == (delivery != 'sent')
+        assert state['end_checks']['qq_pending'] == int(delivery in ('pending', 'sending'))
+        assert state['end_checks']['qq_failed'] == int(delivery in ('failed', 'expired', 'quota'))
+        assert state['end_checks']['qq_unknown'] == int(delivery == 'unknown')
         c.status = 'ended'
         db.commit()
         assert not snapshot(db, c, merchant=True)['needs_reply']

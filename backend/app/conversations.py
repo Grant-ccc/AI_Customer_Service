@@ -34,6 +34,10 @@ class Action(BaseModel):
     handoff_id: UUID
 
 
+class EndAction(Action):
+    expected_revision: int | None = Field(default=None, ge=0)
+
+
 def conversation(db, conversation_id, lock=False):
     query = select(Conversation).where(Conversation.id == conversation_id)
     if lock:
@@ -96,6 +100,23 @@ def needs_reply(db, c, h, is_qq=False):
     return last_reply <= max(c.latest_user_sequence, h.covered_sequence)
 
 
+def end_checks(db, c, h, is_qq=False):
+    result = {'needs_reply': needs_reply(db, c, h, is_qq), 'qq_pending': 0, 'qq_failed': 0, 'qq_unknown': 0}
+    if is_qq and h:
+        from .models import QQDelivery
+        rows = db.execute(select(QQDelivery.status, func.count()).join(Message, Message.id == QQDelivery.message_id)
+                          .where(Message.conversation_id == c.id, Message.role == 'merchant', Message.sequence > h.covered_sequence)
+                          .group_by(QQDelivery.status))
+        for status, count in rows:
+            if status in ('pending', 'sending'):
+                result['qq_pending'] += count
+            elif status in ('expired', 'quota', 'failed'):
+                result['qq_failed'] += count
+            elif status != 'sent':
+                result['qq_unknown'] += count
+    return result
+
+
 def snapshot(db, c, merchant=False):
     from .simple_ai import public_status
     result = {'id': c.id, 'status': c.status, 'revision': c.revision, 'sequence': c.sequence,
@@ -113,6 +134,7 @@ def snapshot(db, c, merchant=False):
         from .handoff_summary import summary_data
         h = latest_handoff(db, c)
         result['needs_reply'] = needs_reply(db, c, h, bool(binding))
+        result['end_checks'] = end_checks(db, c, h, bool(binding))
         result['handoff'] = None if not h else {
             'id': h.id, 'round': h.round, 'reason': h.reason,
             'covered_sequence': h.covered_sequence,
@@ -268,11 +290,13 @@ def merchant_send(conversation_id: str, data: Send, request: Request, db: Sessio
 
 
 @router.post('/merchant/conversations/{conversation_id}/end')
-def end(conversation_id: str, data: Action, request: Request, db: Session = Depends(get_db)):
+def end(conversation_id: str, data: EndAction, request: Request, db: Session = Depends(get_db)):
     session_auth(request, db, merchant=True)
     c = conversation(db, conversation_id, lock=True)
     h = active_handoff(db, c, data.handoff_id)
     if c.status == 'human_active':
+        if data.expected_revision is not None and data.expected_revision != c.revision:
+            raise HTTPException(409, '会话有新变化，请核对最新消息后再确认结束。')
         c.status = 'ended'
         h.ended_at = now()
         add_message(db, c, 'system', '商家已结束本次处理。历史记录保留，可继续留言或再次转人工。')

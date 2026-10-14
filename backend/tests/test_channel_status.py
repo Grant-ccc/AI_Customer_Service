@@ -37,7 +37,7 @@ def test_fresh_heartbeat_and_stale_worker(database, monkeypatch, state, seconds,
 
 def test_reconnect_and_restart_preserve_last_connection(database, monkeypatch):
     monkeypatch.setattr(channel_status, 'SessionLocal', database)
-    connected = now()
+    connected = now().replace(microsecond=0)
     channel_status.record_qq('connected', connected)
     channel_status.record_qq('stopped')
     channel_status.record_qq('connecting')
