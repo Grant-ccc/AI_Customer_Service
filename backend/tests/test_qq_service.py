@@ -13,6 +13,7 @@ SCRIPTS = Path(__file__).resolve().parents[2] / 'scripts'
 sys.path.insert(0, str(SCRIPTS))
 from qq_runtime import FileLock, RuntimePaths, atomic_json, locked, managed_run, read_json
 from qq_service import Supervisor, local_status, start, stop
+import qq_service
 
 
 def wait_for(predicate, timeout=12):
@@ -110,6 +111,55 @@ def test_stop_during_backoff_does_not_launch_another_worker(tmp_path):
         assert stop(paths, timeout=5) == 0
         thread.join(2)
         assert attempts(paths) == 1
+
+
+def test_transient_state_write_denial_does_not_kill_supervisor(tmp_path, monkeypatch):
+    original = qq_service.atomic_json
+    failures = []
+
+    def deny_running_state(path, data):
+        if path.name == 'service.json' and data.get('state') == 'running' and len(failures) < 3:
+            failures.append(True)
+            raise PermissionError('simulated sharing violation')
+        return original(path, data)
+
+    monkeypatch.setattr(qq_service, 'atomic_json', deny_running_state)
+    with running(tmp_path) as (paths, _, thread, results):
+        wait_for(lambda: len(failures) == 3 and read_json(paths.state).get('state') == 'running'
+                 and locked(paths.worker_lock))
+        assert thread.is_alive() and results == []
+        assert attempts(paths) == 1
+        assert 'state_write_deferred' in (paths.home / 'service.log').read_text(encoding='utf-8')
+        assert stop(paths, timeout=6) == 0
+        thread.join(3)
+        assert results == [0]
+        assert not locked(paths.worker_lock)
+
+
+def test_launch_waits_for_current_state_and_blocks_when_unwritable(tmp_path, monkeypatch):
+    paths = RuntimePaths(tmp_path / 'qq')
+    original = qq_service.atomic_json
+    atomic_json(paths.state, {'run_id': 'previous-owner', 'heartbeat': 0})
+    supervisor = Supervisor(paths, ['must-not-launch'], poll=.01)
+    failures = []
+
+    def fail_once(path, data):
+        if not failures:
+            failures.append(True)
+            raise PermissionError('simulated sharing violation')
+        return original(path, data)
+
+    monkeypatch.setattr(qq_service, 'atomic_json', fail_once)
+    assert supervisor.prepare_launch(timeout=.2)
+    assert read_json(paths.state)['run_id'] == supervisor.run_id
+
+    def always_fail(*_):
+        raise PermissionError('simulated persistent failure')
+
+    monkeypatch.setattr(qq_service, 'atomic_json', always_fail)
+    assert not supervisor.prepare_launch(timeout=.02)
+    atomic_json(paths.stop, {'run_id': supervisor.run_id})
+    assert not supervisor.prepare_launch(timeout=.2)
 
 
 def test_external_worker_is_not_killed_or_duplicated(tmp_path):

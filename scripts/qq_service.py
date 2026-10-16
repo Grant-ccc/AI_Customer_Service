@@ -40,7 +40,28 @@ class Supervisor:
 
     def publish(self, state, **values):
         self.state.update(state=state, heartbeat=time.time(), **values)
-        atomic_json(self.paths.state, self.state)
+        try:
+            atomic_json(self.paths.state, self.state)
+        except OSError as exc:
+            # Atomic replacement can still be denied after its bounded retry on
+            # Windows. Keep supervising; the worker's lease remains authoritative
+            # if writes stay unavailable. Never claim that this heartbeat persisted.
+            self.event('state_write_deferred', error_type=type(exc).__name__,
+                       winerror=getattr(exc, 'winerror', None))
+            return False
+        return True
+
+    def prepare_launch(self, timeout=20):
+        # A child must not start with a stale owner's token or an expired lease.
+        deadline = time.monotonic() + timeout
+        while not stopping(self.paths, self.run_id):
+            if self.publish('starting', worker_pid=None):
+                return True
+            if time.monotonic() >= deadline:
+                self.event('launch_blocked_by_state_write')
+                return False
+            time.sleep(self.poll)
+        return False
 
     def event(self, event, **values):
         self.log.info(json.dumps({'event': event, **values}, ensure_ascii=False))
@@ -77,7 +98,8 @@ class Supervisor:
             return 2
         failures = 0
         while not stopping(self.paths, self.run_id):
-            self.publish('starting')
+            if not self.prepare_launch():
+                return 0 if stopping(self.paths, self.run_id) else 1
             # Rotate only between launches, when the worker has closed this file.
             gateway_log = self.paths.home / 'gateway.log'
             if gateway_log.exists() and gateway_log.stat().st_size > 2_000_000:
