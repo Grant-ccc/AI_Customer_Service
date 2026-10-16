@@ -77,7 +77,9 @@ def attempts(paths):
 
 def test_worker_crash_recovers_and_explicit_stop_stays_stopped(tmp_path):
     with running(tmp_path, failures=2) as (paths, supervisor, thread, results):
-        wait_for(lambda: attempts(paths) == 3 and locked(paths.worker_lock))
+        # Three real interpreter launches can exceed 12s on a busy Windows host.
+        # Keep recovery/attempt assertions unchanged; bound only startup waiting.
+        wait_for(lambda: attempts(paths) == 3 and locked(paths.worker_lock), timeout=60)
         assert local_status(paths)['manager_running']
         assert read_json(paths.state)['restarts'] == 2
         assert start(paths) == 0  # Second start cannot launch another manager/worker.
